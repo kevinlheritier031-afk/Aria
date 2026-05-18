@@ -1,108 +1,15 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { supabase, signIn, signUp, signOut, getSession, fetchStock, fetchFournisseurs, fetchScans, fetchPrix } from './lib/supabase'
-import { NAV_ITEMS, ROLES, initials, dlcStatus, isCritique, checkPwd, pwdScore, pwdStrengthColor, pwdStrengthLabel } from './constants'
+import { supabase, signOut, getSession, fetchStock, fetchFournisseurs, fetchScans, fetchPrix } from './lib/supabase'
+import { NAV_ITEMS, ROLES, initials, dlcStatus, isCritique } from './constants'
 
-// ─── Auth Screen ──────────────────────────────────────────────────────────────
-
-function AuthScreen({ setUser, setProfile, onDataLoaded }) {
-  const [mode, setMode] = useState('login')
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [name, setName] = useState('')
-  const [role, setRole] = useState('employe')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
-  const [showPwd, setShowPwd] = useState(false)
-
-  const score = pwdScore(password)
-
-  async function handleSubmit(e) {
-    e.preventDefault()
-    setError('')
-    setLoading(true)
-    if (mode === 'login') {
-      const { data, error } = await signIn({ email, password })
-      if (error) { setError(error.message); setLoading(false); return }
-      setUser(data.session.user)
-      setProfile(data.session.user.user_metadata)
-      onDataLoaded(data.session.user.id)
-    } else {
-      if (score < 2) { setError('Mot de passe trop faible'); setLoading(false); return }
-      const { data, error } = await signUp({ email, password, name, role })
-      if (error) { setError(error.message); setLoading(false); return }
-      if (data.session) {
-        setUser(data.session.user)
-        setProfile(data.session.user.user_metadata)
-        onDataLoaded(data.session.user.id)
-      } else {
-        setMode('login')
-        setError('Confirmez votre email puis connectez-vous.')
-      }
-    }
-    setLoading(false)
-  }
-
-  return (
-    <div className="auth-screen">
-      <div className="auth-card">
-        <div className="auth-logo">
-          <span className="auth-logo-icon">✦</span>
-          <span className="auth-logo-text">Aria</span>
-        </div>
-        <p className="auth-subtitle">Gestion de cuisine professionnelle</p>
-
-        <div className="auth-tabs">
-          <button className={`auth-tab${mode === 'login' ? ' active' : ''}`} onClick={() => { setMode('login'); setError('') }}>Connexion</button>
-          <button className={`auth-tab${mode === 'signup' ? ' active' : ''}`} onClick={() => { setMode('signup'); setError('') }}>Créer un compte</button>
-        </div>
-
-        <form onSubmit={handleSubmit} className="auth-form">
-          {mode === 'signup' && (
-            <div className="form-group">
-              <label className="form-label">Prénom &amp; Nom</label>
-              <input className="input" type="text" placeholder="Jean Dupont" value={name} onChange={e => setName(e.target.value)} required />
-            </div>
-          )}
-          <div className="form-group">
-            <label className="form-label">Email</label>
-            <input className="input" type="email" placeholder="chef@restaurant.fr" value={email} onChange={e => setEmail(e.target.value)} required />
-          </div>
-          <div className="form-group">
-            <label className="form-label">Mot de passe</label>
-            <div className="input-wrap">
-              <input className="input" type={showPwd ? 'text' : 'password'} placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} required />
-              <button type="button" className="input-eye" onClick={() => setShowPwd(v => !v)}>{showPwd ? '🙈' : '👁️'}</button>
-            </div>
-            {mode === 'signup' && password.length > 0 && (
-              <div className="pwd-meter">
-                <div className="pwd-bar">
-                  {[1,2,3,4].map(i => (
-                    <div key={i} className="pwd-seg" style={{ background: i <= score ? pwdStrengthColor(score) : 'var(--border)' }} />
-                  ))}
-                </div>
-                <span className="pwd-label" style={{ color: pwdStrengthColor(score) }}>{pwdStrengthLabel(score)}</span>
-              </div>
-            )}
-          </div>
-          {mode === 'signup' && (
-            <div className="form-group">
-              <label className="form-label">Rôle</label>
-              <select className="input" value={role} onChange={e => setRole(e.target.value)}>
-                {Object.entries(ROLES).filter(([k]) => k !== 'superadmin').map(([k, v]) => (
-                  <option key={k} value={k}>{v.icon} {v.label}</option>
-                ))}
-              </select>
-            </div>
-          )}
-          {error && <p className="auth-error">{error}</p>}
-          <button className="btn btn-primary btn-full" type="submit" disabled={loading}>
-            {loading ? 'Chargement…' : mode === 'login' ? 'Se connecter' : 'Créer mon compte'}
-          </button>
-        </form>
-      </div>
-    </div>
-  )
-}
+// Pages
+import Auth       from './pages/Auth'
+import Dashboard  from './pages/Dashboard'
+import Stock      from './pages/Stock'
+import Reception  from './pages/Reception'
+import Commandes  from './pages/Commandes'
+import Haccp      from './pages/Haccp'
+import AriaPage   from './pages/Aria'
 
 // ─── Sidebar ──────────────────────────────────────────────────────────────────
 
@@ -167,7 +74,7 @@ function TopBar({ page, profile, onLogout }) {
 // ─── PullToRefresh ────────────────────────────────────────────────────────────
 
 function PullToRefresh({ onRefresh, children }) {
-  const [pulling, setPulling] = useState(false)
+  const [pulling,    setPulling]    = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const startY = useRef(0)
   const THRESHOLD = 70
@@ -220,28 +127,16 @@ function BottomNav({ page, setPage, alertDlc, alertCmd }) {
   )
 }
 
-// ─── Page Placeholders ────────────────────────────────────────────────────────
-
-function PagePlaceholder({ title, icon }) {
-  return (
-    <div className="page-placeholder">
-      <div className="page-placeholder-icon">{icon}</div>
-      <h2 className="page-placeholder-title">{title}</h2>
-      <p className="page-placeholder-sub">Module en cours de développement</p>
-    </div>
-  )
-}
-
 // ─── App Root ─────────────────────────────────────────────────────────────────
 
 export default function App() {
-  const [user, setUser] = useState(null)
-  const [profile, setProfile] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [page, setPage] = useState('dashboard')
-  const [stock, setStock] = useState([])
-  const [scanLog, setScanLog] = useState([])
-  const [prixHist, setPrixHist] = useState([])
+  const [user,         setUser]         = useState(null)
+  const [profile,      setProfile]      = useState(null)
+  const [loading,      setLoading]      = useState(true)
+  const [page,         setPage]         = useState('dashboard')
+  const [stock,        setStock]        = useState([])
+  const [scanLog,      setScanLog]      = useState([])
+  const [prixHist,     setPrixHist]     = useState([])
   const [fournisseurs, setFournisseurs] = useState([])
 
   const loadData = useCallback(async (userId) => {
@@ -285,6 +180,12 @@ export default function App() {
     return () => subscription.unsubscribe()
   }, [loadData])
 
+  const handleLogin = (u) => {
+    setUser(u)
+    setProfile(u.user_metadata)
+    loadData(u.id)
+  }
+
   const handleLogout = async () => {
     await signOut()
     setUser(null)
@@ -304,16 +205,8 @@ export default function App() {
   }
 
   if (!user) {
-    return (
-      <AuthScreen
-        setUser={setUser}
-        setProfile={setProfile}
-        onDataLoaded={loadData}
-      />
-    )
+    return <Auth onLogin={handleLogin} />
   }
-
-  const sharedProps = { stock, scanLog, prixHist, fournisseurs, user, profile, loadData }
 
   return (
     <div className="shell">
@@ -332,12 +225,56 @@ export default function App() {
 
         <PullToRefresh onRefresh={() => loadData(user.id)}>
           <main className="shell-content">
-            {page === 'dashboard'  && <PagePlaceholder title="Dashboard"  icon="📊" />}
-            {page === 'reception'  && <PagePlaceholder title="Réception"  icon="📷" />}
-            {page === 'stock'      && <PagePlaceholder title="Stock"      icon="📦" />}
-            {page === 'commandes'  && <PagePlaceholder title="Commandes"  icon="🛒" />}
-            {page === 'haccp'      && <PagePlaceholder title="HACCP"      icon="✅" />}
-            {page === 'aria'       && <PagePlaceholder title="Aria IA"    icon="🤖" />}
+            {page === 'dashboard' && (
+              <Dashboard
+                stock={stock}
+                scanLog={scanLog}
+                prixHist={prixHist}
+                fournisseurs={fournisseurs}
+                setPage={setPage}
+              />
+            )}
+            {page === 'reception' && (
+              <Reception
+                scanLog={scanLog}
+                setScanLog={setScanLog}
+                stock={stock}
+                setStock={setStock}
+                user={user}
+              />
+            )}
+            {page === 'stock' && (
+              <Stock
+                stock={stock}
+                setStock={setStock}
+                fournisseurs={fournisseurs}
+                user={user}
+              />
+            )}
+            {page === 'commandes' && (
+              <Commandes
+                stock={stock}
+                fournisseurs={fournisseurs}
+                setFournisseurs={setFournisseurs}
+                prixHist={prixHist}
+                user={user}
+              />
+            )}
+            {page === 'haccp' && (
+              <Haccp
+                user={user}
+                scanLog={scanLog}
+              />
+            )}
+            {page === 'aria' && (
+              <AriaPage
+                stock={stock}
+                fournisseurs={fournisseurs}
+                scanLog={scanLog}
+                user={user}
+                profile={profile}
+              />
+            )}
           </main>
         </PullToRefresh>
 
