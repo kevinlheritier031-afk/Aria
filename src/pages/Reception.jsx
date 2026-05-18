@@ -68,7 +68,7 @@ function ViewTabs({ view, setView }) {
 
 // ── Reception Page ────────────────────────────────────────────────────────────
 
-export default function Reception({ scanLog = [], setScanLog, stock = [], setStock, user }) {
+export default function Reception({ scanLog = [], setScanLog, stock = [], setStock, user, fromDashboard = false, onBack }) {
   const [image,     setImage]     = useState(null)   // base64
   const [imageUrl,  setImageUrl]  = useState(null)   // object URL for preview
   const [analyzing, setAnalyzing] = useState(false)
@@ -163,6 +163,9 @@ export default function Reception({ scanLog = [], setScanLog, stock = [], setSto
   if (!imageUrl) {
     return (
       <div style={S.page}>
+        {fromDashboard && (
+          <button style={S.backBtn} onClick={onBack}>← Retour</button>
+        )}
         <h1 style={S.title}>Réception</h1>
         <p style={S.subtitle}>Photographiez un bon de livraison ou une facture pour l'analyser avec l'IA.</p>
 
@@ -211,6 +214,9 @@ export default function Reception({ scanLog = [], setScanLog, stock = [], setSto
 
   return (
     <div style={S.page}>
+      {fromDashboard && (
+        <button style={S.backBtn} onClick={onBack}>← Retour</button>
+      )}
       <div style={S.header}>
         <h1 style={S.title}>Réception</h1>
         <button style={S.btnGhost} onClick={reset}>← Nouvelle photo</button>
@@ -298,6 +304,7 @@ const F = "'DM Sans','Inter',sans-serif"
 
 const S = {
   page: { padding: 20, display: 'flex', flexDirection: 'column', gap: 16, fontFamily: F, maxWidth: 720, margin: '0 auto' },
+  backBtn: { display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 13.5, fontWeight: 500, color: '#2563EB', background: 'none', border: 'none', padding: '2px 0', cursor: 'pointer', fontFamily: F },
   header: { display: 'flex', alignItems: 'center', justifyContent: 'space-between' },
   title:  { fontSize: 22, fontWeight: 700, color: '#0F172A', margin: 0 },
   subtitle: { fontSize: 14, color: '#64748B', margin: 0 },

@@ -154,7 +154,7 @@ function OrderSheet({ four, items, onClose }) {
 
 // ── Commandes Page ────────────────────────────────────────────────────────────
 
-export default function Commandes({ stock = [], fournisseurs = [], setFournisseurs, prixHist = [], user }) {
+export default function Commandes({ stock = [], fournisseurs = [], setFournisseurs, prixHist = [], user, fromDashboard = false, onBack }) {
   const [tab,        setTab]        = useState('commandes')
   const [orderSheet, setOrderSheet] = useState(null)
   const [editFour,   setEditFour]   = useState(null)
@@ -212,6 +212,9 @@ export default function Commandes({ stock = [], fournisseurs = [], setFournisseu
 
   return (
     <div style={S.page}>
+      {fromDashboard && (
+        <button style={S.backBtn} onClick={onBack}>← Retour</button>
+      )}
       <h1 style={S.title}>Commandes</h1>
 
       {/* Tabs */}
@@ -359,6 +362,7 @@ const F = "'DM Sans','Inter',sans-serif"
 
 const S = {
   page: { padding:20, display:'flex', flexDirection:'column', gap:16, fontFamily:F, maxWidth:860, margin:'0 auto' },
+  backBtn: { display:'inline-flex', alignItems:'center', gap:5, fontSize:13.5, fontWeight:500, color:'#2563EB', background:'none', border:'none', padding:'2px 0', cursor:'pointer', fontFamily:F },
   title: { fontSize:22, fontWeight:700, color:'#0F172A', margin:0 },
 
   tabs: { display:'flex', background:'#F1F5F9', borderRadius:10, padding:3, gap:3 },

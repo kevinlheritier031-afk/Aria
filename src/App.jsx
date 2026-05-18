@@ -134,6 +134,7 @@ export default function App() {
   const [profile,      setProfile]      = useState(null)
   const [loading,      setLoading]      = useState(true)
   const [page,         setPage]         = useState('dashboard')
+  const [navSource,    setNavSource]    = useState(null)
   const [stock,        setStock]        = useState([])
   const [scanLog,      setScanLog]      = useState([])
   const [prixHist,     setPrixHist]     = useState([])
@@ -192,6 +193,10 @@ export default function App() {
     setProfile(null)
   }
 
+  const setPageFromDashboard = useCallback((p) => { setPage(p); setNavSource('dashboard') }, [])
+  const setPageClear         = useCallback((p) => { setPage(p); setNavSource(null) }, [])
+  const handleBack           = useCallback(() => { setPage('dashboard'); setNavSource(null) }, [])
+
   const alertDlc = stock.filter(i => ['critical', 'expired'].includes(dlcStatus(i.dlc))).length
   const alertCmd = stock.filter(i => isCritique(i)).length
 
@@ -212,7 +217,7 @@ export default function App() {
     <div className="shell">
       <Sidebar
         page={page}
-        setPage={setPage}
+        setPage={setPageClear}
         alertDlc={alertDlc}
         alertCmd={alertCmd}
         user={user}
@@ -231,7 +236,7 @@ export default function App() {
                 scanLog={scanLog}
                 prixHist={prixHist}
                 fournisseurs={fournisseurs}
-                setPage={setPage}
+                setPage={setPageFromDashboard}
               />
             )}
             {page === 'reception' && (
@@ -241,6 +246,8 @@ export default function App() {
                 stock={stock}
                 setStock={setStock}
                 user={user}
+                fromDashboard={navSource === 'dashboard'}
+                onBack={handleBack}
               />
             )}
             {page === 'stock' && (
@@ -249,6 +256,8 @@ export default function App() {
                 setStock={setStock}
                 fournisseurs={fournisseurs}
                 user={user}
+                fromDashboard={navSource === 'dashboard'}
+                onBack={handleBack}
               />
             )}
             {page === 'commandes' && (
@@ -258,12 +267,16 @@ export default function App() {
                 setFournisseurs={setFournisseurs}
                 prixHist={prixHist}
                 user={user}
+                fromDashboard={navSource === 'dashboard'}
+                onBack={handleBack}
               />
             )}
             {page === 'haccp' && (
               <Haccp
                 user={user}
                 scanLog={scanLog}
+                fromDashboard={navSource === 'dashboard'}
+                onBack={handleBack}
               />
             )}
             {page === 'aria' && (
@@ -273,12 +286,14 @@ export default function App() {
                 scanLog={scanLog}
                 user={user}
                 profile={profile}
+                fromDashboard={navSource === 'dashboard'}
+                onBack={handleBack}
               />
             )}
           </main>
         </PullToRefresh>
 
-        <BottomNav page={page} setPage={setPage} alertDlc={alertDlc} alertCmd={alertCmd} />
+        <BottomNav page={page} setPage={setPageClear} alertDlc={alertDlc} alertCmd={alertCmd} />
       </div>
     </div>
   )

@@ -56,7 +56,7 @@ const SUGGESTIONS = [
 
 // ── Aria Chat Page ────────────────────────────────────────────────────────────
 
-export default function Aria({ stock = [], fournisseurs = [], scanLog = [], user, profile }) {
+export default function Aria({ stock = [], fournisseurs = [], scanLog = [], user, profile, fromDashboard = false, onBack }) {
   const [messages, setMessages] = useState([
     {
       id: 'welcome', role: 'assistant',
@@ -131,6 +131,9 @@ export default function Aria({ stock = [], fournisseurs = [], scanLog = [], user
 
   return (
     <div style={S.page}>
+      {fromDashboard && (
+        <button style={S.backBtn} onClick={onBack}>← Retour</button>
+      )}
       {/* Header */}
       <div style={S.header}>
         <div style={S.ariaHeader}>
@@ -198,6 +201,7 @@ const S = {
   page: {
     display:'flex', flexDirection:'column', height:'100%', fontFamily:F, maxWidth:760, margin:'0 auto', width:'100%',
   },
+  backBtn: { display:'inline-flex', alignItems:'center', gap:5, fontSize:13.5, fontWeight:500, color:'#2563EB', background:'none', border:'none', padding:'8px 20px 0', cursor:'pointer', fontFamily:F },
   header: {
     flexShrink:0, padding:'16px 20px 12px', background:'#fff', borderBottom:'1px solid #E2E8F0',
     display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, flexWrap:'wrap',

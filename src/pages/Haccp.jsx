@@ -62,7 +62,7 @@ function RelRow({ rel }) {
 
 // ── HACCP Page ────────────────────────────────────────────────────────────────
 
-export default function Haccp({ user, scanLog = [] }) {
+export default function Haccp({ user, scanLog = [], fromDashboard = false, onBack }) {
   const [zone,    setZone]    = useState('frigo')
   const [valeur,  setValeur]  = useState('')
   const [note,    setNote]    = useState('')
@@ -107,6 +107,9 @@ export default function Haccp({ user, scanLog = [] }) {
 
   return (
     <div style={S.page}>
+      {fromDashboard && (
+        <button style={S.backBtn} onClick={onBack}>← Retour</button>
+      )}
       <h1 style={S.title}>HACCP</h1>
 
       {/* Main tabs */}
@@ -239,6 +242,7 @@ const F = "'DM Sans','Inter',sans-serif"
 
 const S = {
   page: { padding:20, display:'flex', flexDirection:'column', gap:16, fontFamily:F, maxWidth:800, margin:'0 auto' },
+  backBtn: { display:'inline-flex', alignItems:'center', gap:5, fontSize:13.5, fontWeight:500, color:'#2563EB', background:'none', border:'none', padding:'2px 0', cursor:'pointer', fontFamily:F },
   title: { fontSize:22, fontWeight:700, color:'#0F172A', margin:0 },
 
   tabs: { display:'flex', background:'#F1F5F9', borderRadius:10, padding:3, gap:3, flexWrap:'wrap' },

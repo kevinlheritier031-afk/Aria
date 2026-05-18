@@ -186,7 +186,7 @@ function Field({ label, children }) {
 
 // ── Stock Page ────────────────────────────────────────────────────────────────
 
-export default function Stock({ stock = [], setStock, fournisseurs = [], user }) {
+export default function Stock({ stock = [], setStock, fournisseurs = [], user, fromDashboard = false, onBack }) {
   const [mode,    setMode]    = useState('liste')
   const [filter,  setFilter]  = useState('tout')
   const [search,  setSearch]  = useState('')
@@ -235,6 +235,9 @@ export default function Stock({ stock = [], setStock, fournisseurs = [], user })
 
   return (
     <div style={S.page}>
+      {fromDashboard && (
+        <button style={S.backBtn} onClick={onBack}>← Retour</button>
+      )}
       {/* Header */}
       <div style={S.header}>
         <h1 style={S.title}>Stock</h1>
@@ -313,6 +316,7 @@ const F = "'DM Sans','Inter',sans-serif"
 
 const S = {
   page: { padding: 20, display: 'flex', flexDirection: 'column', gap: 14, fontFamily: F, maxWidth: 900, margin: '0 auto' },
+  backBtn: { display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 13.5, fontWeight: 500, color: '#2563EB', background: 'none', border: 'none', padding: '2px 0', cursor: 'pointer', fontFamily: F },
   header: { display: 'flex', alignItems: 'center', justifyContent: 'space-between' },
   title:  { fontSize: 22, fontWeight: 700, color: '#0F172A', margin: 0 },
   btnAdd: { padding: '9px 18px', background: '#2563EB', color: '#fff', border: 'none', borderRadius: 10, fontSize: 13.5, fontWeight: 600, cursor: 'pointer', fontFamily: F },
