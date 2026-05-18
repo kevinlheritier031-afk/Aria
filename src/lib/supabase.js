@@ -85,3 +85,13 @@ export async function insertPrix(prix) {
   const { data, error } = await supabase.from("prix_historique").insert(prix);
   return { data, error };
 }
+
+export async function fetchTemperatures(userId) {
+  const { data, error } = await supabase.from("temperatures").select("*").eq("user_id",userId).order("created_at",{ascending:false}).limit(100);
+  return { data, error };
+}
+
+export async function insertTemperature(temp) {
+  const { data, error } = await supabase.from("temperatures").insert(temp);
+  return { data, error };
+}
