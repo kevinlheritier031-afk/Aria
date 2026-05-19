@@ -95,3 +95,35 @@ export async function insertTemperature(temp) {
   const { data, error } = await supabase.from("temperatures").insert(temp);
   return { data, error };
 }
+
+export async function fetchRecettes(userId) {
+  const { data, error } = await supabase.from("recettes").select("*").eq("user_id",userId).order("nom",{ascending:true});
+  return { data, error };
+}
+
+export async function upsertRecette(recette) {
+  const { data, error } = await supabase.from("recettes").upsert(recette,{onConflict:"id"});
+  return { data, error };
+}
+
+export async function deleteRecette(id) {
+  const { error } = await supabase.from("recettes").delete().eq("id",id);
+  return { error };
+}
+
+export async function fetchMiseEnPlace(userId, date) {
+  let q = supabase.from("mise_en_place").select("*").eq("user_id",userId).order("ordre",{ascending:true});
+  if (date) q = q.eq("date",date);
+  const { data, error } = await q;
+  return { data, error };
+}
+
+export async function upsertMiseEnPlace(task) {
+  const { data, error } = await supabase.from("mise_en_place").upsert(task,{onConflict:"id"});
+  return { data, error };
+}
+
+export async function deleteMiseEnPlace(id) {
+  const { error } = await supabase.from("mise_en_place").delete().eq("id",id);
+  return { error };
+}

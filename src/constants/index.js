@@ -58,12 +58,31 @@ export const ROLES = {
 };
 
 export const NAV_ITEMS = [
-  {k:"dashboard",icon:"⊞",label:"Dashboard",emoji:"📊"},
-  {k:"reception",icon:"⊡",label:"Réception",emoji:"📷"},
-  {k:"stock",icon:"⊟",label:"Stock",emoji:"📦"},
-  {k:"commandes",icon:"🛒",label:"Commandes",emoji:"🛒"},
-  {k:"haccp",icon:"✓",label:"HACCP",emoji:"✅"},
-  {k:"aria",icon:"✦",label:"Aria",emoji:"🤖"},
+  {k:"dashboard",   icon:"⊞", label:"Dashboard",    emoji:"📊"},
+  {k:"reception",   icon:"⊡", label:"Réception",     emoji:"📷"},
+  {k:"stock",       icon:"⊟", label:"Stock",         emoji:"📦"},
+  {k:"commandes",   icon:"🛒", label:"Commandes",     emoji:"🛒"},
+  {k:"recettes",    icon:"📖", label:"Recettes",      emoji:"📖"},
+  {k:"mise_en_place",icon:"📋",label:"Mise en place", emoji:"📋"},
+  {k:"haccp",       icon:"✓", label:"HACCP",         emoji:"✅"},
+  {k:"aria",        icon:"✦", label:"Aria",          emoji:"🤖"},
+];
+
+export const ALLERGENES = [
+  {k:"gluten",        label:"Gluten",          icon:"🌾"},
+  {k:"crustaces",     label:"Crustacés",       icon:"🦐"},
+  {k:"oeufs",         label:"Œufs",            icon:"🥚"},
+  {k:"poisson",       label:"Poisson",         icon:"🐟"},
+  {k:"arachides",     label:"Arachides",       icon:"🥜"},
+  {k:"soja",          label:"Soja",            icon:"🫘"},
+  {k:"lait",          label:"Lait",            icon:"🥛"},
+  {k:"fruits_a_coque",label:"Fruits à coque",  icon:"🌰"},
+  {k:"celeri",        label:"Céleri",          icon:"🌿"},
+  {k:"moutarde",      label:"Moutarde",        icon:"💛"},
+  {k:"sesame",        label:"Sésame",          icon:"🌱"},
+  {k:"sulfites",      label:"Sulfites",        icon:"🍷"},
+  {k:"lupin",         label:"Lupin",           icon:"🌼"},
+  {k:"mollusques",    label:"Mollusques",      icon:"🦑"},
 ];
 
 export const uid = () => Date.now().toString(36)+Math.random().toString(36).slice(2,5);
@@ -102,8 +121,8 @@ export function dlcLabel(s,dlc){
 }
 
 export function isCritique(item){
-  if(item.seuilMin==null||item.seuilMin==="")return item.q<=2;
-  return item.q<=parseFloat(item.seuilMin);
+  if(item.seuil_min==null||item.seuil_min==="")return parseFloat(item.q)<=2;
+  return parseFloat(item.q)<=parseFloat(item.seuil_min);
 }
 
 export function checkPwd(pwd){

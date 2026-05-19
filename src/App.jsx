@@ -3,13 +3,15 @@ import { supabase, signOut, getSession, fetchStock, fetchFournisseurs, fetchScan
 import { NAV_ITEMS, ROLES, initials, dlcStatus, isCritique } from './constants'
 
 // Pages
-import Auth       from './pages/Auth'
-import Dashboard  from './pages/Dashboard'
-import Stock      from './pages/Stock'
-import Reception  from './pages/Reception'
-import Commandes  from './pages/Commandes'
-import Haccp      from './pages/Haccp'
-import AriaPage   from './pages/Aria'
+import Auth        from './pages/Auth'
+import Dashboard   from './pages/Dashboard'
+import Stock       from './pages/Stock'
+import Reception   from './pages/Reception'
+import Commandes   from './pages/Commandes'
+import Haccp       from './pages/Haccp'
+import AriaPage    from './pages/Aria'
+import Recettes    from './pages/Recettes'
+import MiseEnPlace from './pages/MiseEnPlace'
 
 // ─── Sidebar ──────────────────────────────────────────────────────────────────
 
@@ -267,6 +269,23 @@ export default function App() {
                 setFournisseurs={setFournisseurs}
                 prixHist={prixHist}
                 setPrixHist={setPrixHist}
+                user={user}
+                fromDashboard={navSource === 'dashboard'}
+                onBack={handleBack}
+              />
+            )}
+            {page === 'recettes' && (
+              <Recettes
+                stock={stock}
+                user={user}
+                fromDashboard={navSource === 'dashboard'}
+                onBack={handleBack}
+              />
+            )}
+            {page === 'mise_en_place' && (
+              <MiseEnPlace
+                stock={stock}
+                setStock={setStock}
                 user={user}
                 fromDashboard={navSource === 'dashboard'}
                 onBack={handleBack}

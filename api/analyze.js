@@ -23,6 +23,7 @@ Règles strictes :
 - Ne jamais inventer de données non visibles sur l'image
 - Si une information est illisible ou absente, utilise null
 - Les dates sont au format JJ/MM/AAAA
+- IMPORTANT : le champ "dlc" est la Date Limite de Consommation (date d'EXPIRATION), jamais la date de fabrication, de production ou de conditionnement. Si le document indique "Fabriqué le" ou "Production :" sans DLC visible, utilise null.
 - Les prix sont en euros (nombres décimaux)
 - Les quantités sont des nombres décimaux
 - Pour "cat", choisir parmi : viande, poisson, laitier, epicerie, legumes, boissons, autre
