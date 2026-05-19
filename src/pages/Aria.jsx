@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+﻿import { useState, useRef, useEffect } from 'react'
 import { initials, ROLES, fdate, ftime } from '../constants'
 
 const STYLE_ID = 'aria-chat-kf'
@@ -195,7 +195,7 @@ export default function Aria({ stock = [], fournisseurs = [], scanLog = [], user
 
 // ── Styles ────────────────────────────────────────────────────────────────────
 
-const F = "'DM Sans','Inter',sans-serif"
+const F = "'Plus Jakarta Sans','Inter',sans-serif"
 
 const S = {
   page: {

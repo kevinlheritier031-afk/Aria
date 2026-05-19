@@ -1,4 +1,4 @@
-// Props:
+﻿// Props:
 //   value    — number | string affiché en grand
 //   label    — titre de la KPI
 //   sub      — sous-titre optionnel
@@ -54,7 +54,7 @@ export default function KpiCard({ value, label, sub, icon, color = '#2563EB', bg
   )
 }
 
-const F = "'DM Sans','Inter',sans-serif"
+const F = "'Plus Jakarta Sans','Inter',sans-serif"
 
 const S = {
   card: {

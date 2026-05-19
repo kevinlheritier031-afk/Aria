@@ -1,4 +1,4 @@
-// Modal réutilisable — bottom sheet sur mobile, dialog centré sur desktop
+﻿// Modal réutilisable — bottom sheet sur mobile, dialog centré sur desktop
 //
 // Props:
 //   open      — boolean
@@ -94,7 +94,7 @@ export default function Modal({ open, onClose, title, children, footer, maxWidth
   )
 }
 
-const F = "'DM Sans','Inter',sans-serif"
+const F = "'Plus Jakarta Sans','Inter',sans-serif"
 
 const S = {
   backdrop: {

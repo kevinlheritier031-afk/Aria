@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+﻿import { useEffect, useState } from 'react'
 import { initials, ROLES } from '../constants'
 
 // Pulsing dot animation injected once
@@ -65,7 +65,7 @@ const S = {
     position: 'sticky',
     top: 0,
     zIndex: 50,
-    fontFamily: "'DM Sans', 'Inter', sans-serif",
+    fontFamily: "'Plus Jakarta Sans', 'Inter', sans-serif",
   },
   logo: {
     display: 'flex',

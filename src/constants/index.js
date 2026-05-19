@@ -1,4 +1,4 @@
-// ═══════════════════════════════════════════════════════
+﻿// ═══════════════════════════════════════════════════════
 //  ARIA — Design Tokens & Constants
 // ═══════════════════════════════════════════════════════
 
@@ -15,9 +15,9 @@ export const COLORS = {
 };
 
 export const FONTS = {
-  sans:"'DM Sans','Inter',sans-serif",
+  sans:"'Plus Jakarta Sans','Inter',sans-serif",
   mono:"'DM Mono','JetBrains Mono',monospace",
-  display:"'DM Sans',sans-serif",
+  display:"'Plus Jakarta Sans',sans-serif",
 };
 
 export const CAT_ICON = {

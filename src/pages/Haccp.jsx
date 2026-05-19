@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+﻿import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { fetchTemperatures, insertTemperature } from '../lib/supabase'
 import { uid, fdate, ftime } from '../constants'
@@ -238,7 +238,7 @@ export default function Haccp({ user, scanLog = [], fromDashboard = false, onBac
 
 // ── Styles ────────────────────────────────────────────────────────────────────
 
-const F = "'DM Sans','Inter',sans-serif"
+const F = "'Plus Jakarta Sans','Inter',sans-serif"
 
 const S = {
   page: { padding:20, display:'flex', flexDirection:'column', gap:16, fontFamily:F, maxWidth:800, margin:'0 auto' },

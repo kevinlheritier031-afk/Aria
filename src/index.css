@@ -1,8 +1,8 @@
-/* ═══════════════════════════════════════════════════════
+﻿/* ═══════════════════════════════════════════════════════
    ARIA — Design System
    ═══════════════════════════════════════════════════════ */
 
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=DM+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&family=DM+Mono:wght@400;500&display=swap');
 
 /* ── Variables ──────────────────────────────────────── */
 
@@ -54,17 +54,17 @@
   --shadow-lg:       0 20px 25px -5px rgba(0,0,0,.10), 0 8px 10px -6px rgba(0,0,0,.05);
 
   /* Typographie */
-  --font-sans:       'DM Sans', 'Inter', system-ui, sans-serif;
+  --font-sans:       'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
   --font-mono:       'DM Mono', 'JetBrains Mono', monospace;
 
   /* Layout */
   --sidebar-w:       240px;
   --topbar-h:        56px;
   --bnav-h:          64px;
-  --radius-sm:       6px;
-  --radius:          10px;
-  --radius-lg:       14px;
-  --radius-xl:       20px;
+  --radius-sm:       8px;
+  --radius:          12px;
+  --radius-lg:       18px;
+  --radius-xl:       26px;
 
   /* Transitions */
   --ease:            cubic-bezier(.4,0,.2,1);
@@ -285,7 +285,6 @@ a { text-decoration: none; color: inherit; }
   display: none;
   align-items: stretch;
   flex-shrink: 0;
-  padding-bottom: env(safe-area-inset-bottom);
 }
 
 .bnav-item {
@@ -607,7 +606,7 @@ textarea.input { resize: vertical; min-height: 80px; }
   max-height: 90vh;
   overflow-y: auto;
   box-shadow: var(--shadow-lg);
-  animation: slide-up .2s var(--ease);
+  animation: slide-up .22s var(--ease);
 }
 
 @media (min-width: 640px) {
@@ -685,9 +684,20 @@ tbody tr:hover td { background: var(--bg); }
 @media (max-width: 767px) {
   .sidebar  { display: none; }
   .topbar   { display: flex; }
-  .bnav     { display: flex; }
 
-  .shell-content { padding: 16px; padding-bottom: calc(var(--bnav-h) + 16px); }
+  .bnav {
+    display: flex;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 200;
+    height: calc(var(--bnav-h) + env(safe-area-inset-bottom));
+    padding-bottom: env(safe-area-inset-bottom);
+    box-shadow: 0 -1px 0 var(--border), 0 -4px 16px rgba(15,23,42,.06);
+  }
+
+  .shell-content { padding: 16px; padding-bottom: calc(var(--bnav-h) + env(safe-area-inset-bottom) + 16px); }
 
   .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
 }

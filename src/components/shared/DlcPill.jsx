@@ -1,4 +1,4 @@
-// Props:
+﻿// Props:
 //   dlc  — string "JJ/MM/AAAA" ou null
 //   size — 'sm' | 'md' (défaut 'md')
 //   showIcon — boolean (défaut true)
@@ -47,7 +47,7 @@ export default function DlcPill({ dlc, size = 'md', showIcon = true }) {
         fontWeight: 600,
         lineHeight: 1.4,
         whiteSpace: 'nowrap',
-        fontFamily: "'DM Sans','Inter',sans-serif",
+        fontFamily: "'Plus Jakarta Sans','Inter',sans-serif",
       }}
     >
       {showIcon && (

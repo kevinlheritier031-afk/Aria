@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+﻿import { useState, useMemo } from 'react'
 import { upsertStock, deleteStockItem } from '../lib/supabase'
 import { CAT_ICON, CAT_COLOR, CAT_BG, UNITES, dlcStatus, dlcDays, dlcColor, uid, fdate } from '../constants'
 
@@ -312,7 +312,7 @@ export default function Stock({ stock = [], setStock, fournisseurs = [], user, f
 
 // ── Styles ────────────────────────────────────────────────────────────────────
 
-const F = "'DM Sans','Inter',sans-serif"
+const F = "'Plus Jakarta Sans','Inter',sans-serif"
 
 const S = {
   page: { padding: 20, display: 'flex', flexDirection: 'column', gap: 14, fontFamily: F, maxWidth: 900, margin: '0 auto' },

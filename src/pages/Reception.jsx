@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+﻿import { useState, useRef } from 'react'
 import { insertScan, upsertStock } from '../lib/supabase'
 import { uid, fdate, ftime, dlcStatus } from '../constants'
 
@@ -300,7 +300,7 @@ export default function Reception({ scanLog = [], setScanLog, stock = [], setSto
 
 // ── Styles ────────────────────────────────────────────────────────────────────
 
-const F = "'DM Sans','Inter',sans-serif"
+const F = "'Plus Jakarta Sans','Inter',sans-serif"
 
 const S = {
   page: { padding: 20, display: 'flex', flexDirection: 'column', gap: 16, fontFamily: F, maxWidth: 720, margin: '0 auto' },

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+﻿import { useState } from 'react'
 import { signOut } from '../lib/supabase'
 import { ROLES, initials } from '../constants'
 
@@ -176,7 +176,7 @@ const S = {
     boxShadow: '0 -8px 40px rgba(15,23,42,.15)',
     animation: 'slideUp .22s ease',
     paddingBottom: 'env(safe-area-inset-bottom)',
-    fontFamily: "'DM Sans', 'Inter', sans-serif",
+    fontFamily: "'Plus Jakarta Sans', 'Inter', sans-serif",
   },
   handle: {
     width: 36,

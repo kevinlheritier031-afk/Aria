@@ -1,4 +1,4 @@
-import { useState } from 'react'
+﻿import { useState } from 'react'
 import { signIn, signUp } from '../lib/supabase'
 import { checkPwd, pwdScore, pwdStrengthColor, pwdStrengthLabel } from '../constants'
 
@@ -316,7 +316,7 @@ const S = {
     display: 'flex',
     flexDirection: 'column',
     background: 'linear-gradient(160deg, #1D4ED8 0%, #2563EB 30%, #3B82F6 55%, #F8FAFC 55%)',
-    fontFamily: "'DM Sans', 'Inter', sans-serif",
+    fontFamily: "'Plus Jakarta Sans', 'Inter', sans-serif",
   },
   header: {
     flex: '0 0 auto',

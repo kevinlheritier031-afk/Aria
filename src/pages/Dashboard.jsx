@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+﻿import { useMemo } from 'react'
 import { CAT_ICON, CAT_COLOR, CAT_BG, dlcStatus, dlcDays, fdate } from '../constants'
 
 const critique = (item) => {
@@ -216,7 +216,7 @@ export default function Dashboard({ stock = [], scanLog = [], prixHist = [], fou
 
 // ── Styles ────────────────────────────────────────────────────────────────────
 
-const F = "'DM Sans','Inter',sans-serif"
+const F = "'Plus Jakarta Sans','Inter',sans-serif"
 
 const S = {
   page: { padding: 24, display: 'flex', flexDirection: 'column', gap: 20, fontFamily: F, maxWidth: 1200, margin: '0 auto' },

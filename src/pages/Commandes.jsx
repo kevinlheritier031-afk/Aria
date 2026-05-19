@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+﻿import { useState, useMemo } from 'react'
 import { upsertFournisseur, deleteFournisseur } from '../lib/supabase'
 import { MODES_COMMANDE, JOURS, uid } from '../constants'
 
@@ -358,7 +358,7 @@ export default function Commandes({ stock = [], fournisseurs = [], setFournisseu
 
 // ── Styles ────────────────────────────────────────────────────────────────────
 
-const F = "'DM Sans','Inter',sans-serif"
+const F = "'Plus Jakarta Sans','Inter',sans-serif"
 
 const S = {
   page: { padding:20, display:'flex', flexDirection:'column', gap:16, fontFamily:F, maxWidth:860, margin:'0 auto' },

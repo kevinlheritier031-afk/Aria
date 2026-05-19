@@ -1,4 +1,4 @@
-import { useRef, useState, useCallback } from 'react'
+﻿import { useRef, useState, useCallback } from 'react'
 
 const THRESHOLD  = 72   // px to trigger refresh
 const MAX_PULL   = 110  // max visual pull distance
@@ -166,7 +166,7 @@ const S = {
     gap: 8,
     paddingBottom: 12,
     animation: 'ptr-fadein .15s ease',
-    fontFamily: "'DM Sans', 'Inter', sans-serif",
+    fontFamily: "'Plus Jakarta Sans', 'Inter', sans-serif",
   },
   arrow: {
     fontSize: 18,

@@ -1,4 +1,4 @@
-import { NAV_ITEMS, ROLES, initials } from '../constants'
+﻿import { NAV_ITEMS, ROLES, initials } from '../constants'
 
 export default function Sidebar({ page, setPage, alertDlc, alertCmd, user, profile, onLogout }) {
   const name     = profile?.name || user?.email?.split('@')[0] || '?'
@@ -83,7 +83,7 @@ const S = {
     flexDirection: 'column',
     height: '100vh',
     overflow: 'hidden',
-    fontFamily: "'DM Sans', 'Inter', sans-serif",
+    fontFamily: "'Plus Jakarta Sans', 'Inter', sans-serif",
   },
   logoWrap: {
     padding: '22px 18px 14px',

@@ -1,4 +1,4 @@
-import { NAV_ITEMS } from '../constants'
+﻿import { NAV_ITEMS } from '../constants'
 
 // Keyframe for top-bar slide-in injected once
 const STYLE_ID = 'bnav-keyframes'
@@ -60,7 +60,7 @@ const S = {
     alignItems: 'stretch',
     flexShrink: 0,
     paddingBottom: 'env(safe-area-inset-bottom)',
-    fontFamily: "'DM Sans', 'Inter', sans-serif",
+    fontFamily: "'Plus Jakarta Sans', 'Inter', sans-serif",
   },
   item: {
     flex: 1,

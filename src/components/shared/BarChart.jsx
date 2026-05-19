@@ -1,4 +1,4 @@
-// Horizontal bar chart — stock par catégorie ou toute donnée clé/valeur
+﻿// Horizontal bar chart — stock par catégorie ou toute donnée clé/valeur
 //
 // Props:
 //   data      — [{ label, value, color, icon, bg }]
@@ -85,7 +85,7 @@ export default function BarChart({ data = [], unit = '', showValue = true, heigh
   )
 }
 
-const F = "'DM Sans','Inter',sans-serif"
+const F = "'Plus Jakarta Sans','Inter',sans-serif"
 
 const S = {
   chart: {
