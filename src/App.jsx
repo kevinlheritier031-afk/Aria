@@ -12,6 +12,7 @@ import Haccp       from './pages/Haccp'
 import AriaPage    from './pages/Aria'
 import Recettes    from './pages/Recettes'
 import MiseEnPlace from './pages/MiseEnPlace'
+import Business    from './pages/Business'
 
 // ─── Sidebar ──────────────────────────────────────────────────────────────────
 
@@ -295,6 +296,17 @@ export default function App() {
               <Haccp
                 user={user}
                 scanLog={scanLog}
+                fromDashboard={navSource === 'dashboard'}
+                onBack={handleBack}
+              />
+            )}
+            {page === 'business' && (
+              <Business
+                user={user}
+                profile={profile}
+                stock={stock}
+                fournisseurs={fournisseurs}
+                prixHist={prixHist}
                 fromDashboard={navSource === 'dashboard'}
                 onBack={handleBack}
               />

@@ -128,6 +128,16 @@ export async function deleteMiseEnPlace(id) {
   return { error };
 }
 
+export async function fetchCouverts(userId) {
+  const { data, error } = await supabase.from("couverts").select("*").eq("user_id",userId).order("created_at",{ascending:false}).limit(200);
+  return { data, error };
+}
+
+export async function insertCouvert(couvert) {
+  const { data, error } = await supabase.from("couverts").insert(couvert);
+  return { data, error };
+}
+
 export async function fetchAriaConversation(userId) {
   const { data, error } = await supabase
     .from("aria_conversations").select("*").eq("user_id",userId)

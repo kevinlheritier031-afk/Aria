@@ -65,6 +65,7 @@ export const NAV_ITEMS = [
   {k:"recettes",    icon:"📖", label:"Recettes",      emoji:"📖"},
   {k:"mise_en_place",icon:"📋",label:"Mise en place", emoji:"📋"},
   {k:"haccp",       icon:"✓", label:"HACCP",         emoji:"✅"},
+  {k:"business",    icon:"💼", label:"Business",      emoji:"💼"},
   {k:"aria",        icon:"✦", label:"Aria",          emoji:"🤖"},
 ];
 
