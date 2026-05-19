@@ -118,9 +118,10 @@ const EMPTY_FORM = () => ({
 })
 
 function RecetteForm({ initial, onSave, onCancel, user }) {
-  const [form,     setForm]     = useState(initial ? { ...initial, cout_estime: initial.cout_estime ?? '', temps_prep: initial.temps_prep ?? '', temps_cuisson: initial.temps_cuisson ?? '', notes: initial.notes ?? '' } : EMPTY_FORM())
-  const [scanning, setScanning] = useState(false)
-  const [saving,   setSaving]   = useState(false)
+  const [form,      setForm]      = useState(initial ? { ...initial, cout_estime: initial.cout_estime ?? '', temps_prep: initial.temps_prep ?? '', temps_cuisson: initial.temps_cuisson ?? '', notes: initial.notes ?? '' } : EMPTY_FORM())
+  const [scanning,  setScanning]  = useState(false)
+  const [saving,    setSaving]    = useState(false)
+  const [formError, setFormError] = useState('')
   const fileRef = useRef()
   const camRef  = useRef()
 
@@ -148,7 +149,7 @@ function RecetteForm({ initial, onSave, onCancel, user }) {
         notes:        data.notes        || prev.notes,
       }))
     } catch (e) {
-      alert('Erreur scan : ' + e.message)
+      setFormError('Erreur scan : ' + e.message)
     } finally {
       setScanning(false)
     }
@@ -170,7 +171,8 @@ function RecetteForm({ initial, onSave, onCancel, user }) {
   function removeEtape(idx) { f('etapes', form.etapes.filter((_,i) => i !== idx)) }
 
   async function handleSave() {
-    if (!form.nom.trim()) { alert('Nom requis'); return }
+    setFormError('')
+    if (!form.nom.trim()) { setFormError('Le nom de la recette est requis'); return }
     setSaving(true)
     const payload = {
       id:            initial?.id || uid(),
@@ -188,7 +190,7 @@ function RecetteForm({ initial, onSave, onCancel, user }) {
     }
     const { error } = await upsertRecette(payload)
     setSaving(false)
-    if (error) { alert('Erreur : ' + error.message); return }
+    if (error) { setFormError('Erreur : ' + error.message); return }
     onSave(payload)
   }
 
@@ -333,6 +335,11 @@ function RecetteForm({ initial, onSave, onCancel, user }) {
         </div>
       </div>
 
+      {formError && (
+        <div style={{ margin:'0 20px 0', padding:'8px 12px', background:'#FEF2F2', border:'1px solid #FECACA', borderRadius:8, fontSize:12.5, color:'#DC2626', flexShrink:0 }}>
+          {formError}
+        </div>
+      )}
       <div style={S.sheetFtr}>
         <button onClick={onCancel} style={{ ...S.btn, flex:1, background:'#F1F5F9', color:'#475569' }}>Annuler</button>
         <button onClick={handleSave} disabled={saving} style={{ ...S.btn, flex:2, background:'#2563EB', color:'#fff', opacity: saving ? .7 : 1 }}>

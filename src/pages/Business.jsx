@@ -124,6 +124,7 @@ function TabCouverts({ user }) {
   const [couverts,  setCouverts]  = useState([])
   const [loading,   setLoading]   = useState(true)
   const [saving,    setSaving]    = useState(false)
+  const [formErr,   setFormErr]   = useState('')
   const [form,      setForm]      = useState({ date: fdate(), service:'midi', nb:'', note:'' })
 
   useEffect(() => {
@@ -137,8 +138,9 @@ function TabCouverts({ user }) {
   const f = (k, v) => setForm(p => ({ ...p, [k]: v }))
 
   async function handleSave() {
+    setFormErr('')
     const nb = parseInt(form.nb)
-    if (!nb || nb <= 0) { alert('Nombre de couverts requis'); return }
+    if (!nb || nb <= 0) { setFormErr('Veuillez saisir un nombre de couverts valide'); return }
     setSaving(true)
     const rec = { id: uid(), user_id: user.id, date: form.date, service: form.service, nb_couverts: nb, observations: form.note.trim() || null, created_at: new Date().toISOString() }
     await insertCouvert(rec)
@@ -223,6 +225,11 @@ function TabCouverts({ user }) {
             <label style={{ fontSize:12, fontWeight:600, color:'#475569', marginBottom:4, display:'block' }}>Observations</label>
             <input style={S.input} placeholder="Groupe, événement, météo…" value={form.note} onChange={e => f('note', e.target.value)} />
           </div>
+          {formErr && (
+            <div style={{ padding:'7px 12px', background:'#FEF2F2', border:'1px solid #FECACA', borderRadius:8, fontSize:12.5, color:'#DC2626' }}>
+              {formErr}
+            </div>
+          )}
           <button style={{ ...S.btn, background:'#2563EB', color:'#fff', opacity: saving ? .7 : 1 }} onClick={handleSave} disabled={saving}>
             {saving ? 'Enregistrement…' : '+ Enregistrer le service'}
           </button>
@@ -261,8 +268,8 @@ function TabCouverts({ user }) {
 function TabMarges({ user }) {
   const [recettes,     setRecettes]     = useState([])
   const [loading,      setLoading]      = useState(true)
-  const [margeCible,   setMargeCible_]  = useState(() => parseFloat(localStorage.getItem('aria_marge_cible') || '70'))
-  const [caParCouvert, setCaParCouvert_]= useState(() => parseFloat(localStorage.getItem('aria_ca_couvert') || ''))
+  const [margeCible,   setMargeCible_]  = useState(() => { try { return parseFloat(localStorage.getItem('aria_marge_cible') || '70') } catch { return 70 } })
+  const [caParCouvert, setCaParCouvert_]= useState(() => { try { return parseFloat(localStorage.getItem('aria_ca_couvert') || '') || '' } catch { return '' } })
   const [rapport,      setRapport]      = useState(null)
   const [generating,   setGenerating]   = useState(false)
 

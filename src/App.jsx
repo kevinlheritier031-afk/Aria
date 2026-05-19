@@ -1,19 +1,21 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react'
 import { supabase, signOut, getSession, fetchStock, fetchFournisseurs, fetchScans, fetchPrix } from './lib/supabase'
 import { NAV_ITEMS, ROLES, initials, dlcStatus, isCritique } from './constants'
 
-// Pages
-import Auth        from './pages/Auth'
-import Dashboard   from './pages/Dashboard'
-import Stock       from './pages/Stock'
-import Reception   from './pages/Reception'
-import Commandes   from './pages/Commandes'
-import Haccp       from './pages/Haccp'
-import AriaPage    from './pages/Aria'
-import Recettes    from './pages/Recettes'
-import MiseEnPlace from './pages/MiseEnPlace'
-import Business    from './pages/Business'
-import Equipe      from './pages/Equipe'
+// Pages — lazy-loaded for code-splitting
+const Auth        = lazy(() => import('./pages/Auth'))
+const Dashboard   = lazy(() => import('./pages/Dashboard'))
+const Stock       = lazy(() => import('./pages/Stock'))
+const Reception   = lazy(() => import('./pages/Reception'))
+const Commandes   = lazy(() => import('./pages/Commandes'))
+const Haccp       = lazy(() => import('./pages/Haccp'))
+const AriaPage    = lazy(() => import('./pages/Aria'))
+const Recettes    = lazy(() => import('./pages/Recettes'))
+const MiseEnPlace = lazy(() => import('./pages/MiseEnPlace'))
+const Business    = lazy(() => import('./pages/Business'))
+const Equipe      = lazy(() => import('./pages/Equipe'))
+
+const KNOWN_PAGES = new Set(NAV_ITEMS.map(i => i.k))
 
 // ─── Sidebar ──────────────────────────────────────────────────────────────────
 
@@ -104,6 +106,34 @@ function PullToRefresh({ onRefresh, children }) {
         <div className="ptr-indicator">{refreshing ? '⟳' : '↓'}</div>
       )}
       {children}
+    </div>
+  )
+}
+
+// ─── PageSpinner (Suspense fallback) ─────────────────────────────────────────
+
+function PageSpinner() {
+  return (
+    <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100%', minHeight:200 }}>
+      <div style={{ fontSize:26, color:'#2563EB', animation:'spin .8s linear infinite' }}>✦</div>
+    </div>
+  )
+}
+
+// ─── NotFoundPage ─────────────────────────────────────────────────────────────
+
+function NotFoundPage({ setPage }) {
+  return (
+    <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', height:'100%', gap:14, padding:40, textAlign:'center' }}>
+      <div style={{ fontSize:52 }}>🔍</div>
+      <div style={{ fontSize:20, fontWeight:700, color:'#0F172A' }}>Page introuvable</div>
+      <div style={{ fontSize:14, color:'#94A3B8' }}>Cette section n'existe pas ou n'est plus disponible.</div>
+      <button
+        onClick={() => setPage('dashboard')}
+        style={{ padding:'10px 22px', background:'#2563EB', color:'#fff', border:'none', borderRadius:10, fontWeight:600, fontSize:14, cursor:'pointer' }}
+      >
+        ← Retour au tableau de bord
+      </button>
     </div>
   )
 }
@@ -207,14 +237,21 @@ export default function App() {
   if (loading) {
     return (
       <div className="loading-screen">
-        <div className="loading-spinner">✦</div>
-        <p>Chargement…</p>
+        <div style={{ position:'relative', width:60, height:60 }}>
+          <div className="loading-ring" />
+          <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', fontSize:22, color:'#2563EB' }}>✦</div>
+        </div>
+        <p style={{ color:'#94A3B8', fontSize:13, fontWeight:500, letterSpacing:'.3px', margin:0 }}>Chargement…</p>
       </div>
     )
   }
 
   if (!user) {
-    return <Auth onLogin={handleLogin} />
+    return (
+      <Suspense fallback={null}>
+        <Auth onLogin={handleLogin} />
+      </Suspense>
+    )
   }
 
   return (
@@ -234,6 +271,7 @@ export default function App() {
 
         <PullToRefresh onRefresh={() => loadData(user.id)}>
           <main className="shell-content">
+            <Suspense fallback={<PageSpinner />}>
             {page === 'dashboard' && (
               <Dashboard
                 stock={stock}
@@ -331,6 +369,8 @@ export default function App() {
                 onBack={handleBack}
               />
             )}
+            {!KNOWN_PAGES.has(page) && <NotFoundPage setPage={setPageClear} />}
+            </Suspense>
           </main>
         </PullToRefresh>
 

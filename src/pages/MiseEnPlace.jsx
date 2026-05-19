@@ -114,6 +114,7 @@ function AddTaskModal({ onAdd, onClose, recettes, nbPersonnesDefault = 4 }) {
   const [selectedRec,  setSelectedRec]  = useState(null)
   const [nbP,          setNbP]          = useState(nbPersonnesDefault)
   const [deductions,   setDeductions]   = useState([])
+  const [taskError,    setTaskError]    = useState('')
 
   function handleSelectRecette(rec) {
     setSelectedRec(rec)
@@ -141,7 +142,8 @@ function AddTaskModal({ onAdd, onClose, recettes, nbPersonnesDefault = 4 }) {
   }
 
   function handleAdd() {
-    if (!nom.trim()) { alert('Nom requis'); return }
+    setTaskError('')
+    if (!nom.trim()) { setTaskError('Le nom de la tâche est requis'); return }
     onAdd({
       nom:              nom.trim(),
       source_recette:   selectedRec?.id || null,
@@ -220,6 +222,11 @@ function AddTaskModal({ onAdd, onClose, recettes, nbPersonnesDefault = 4 }) {
         )}
       </div>
 
+      {taskError && (
+        <div style={{ margin:'0 20px 4px', padding:'7px 12px', background:'#FEF2F2', border:'1px solid #FECACA', borderRadius:8, fontSize:12.5, color:'#DC2626' }}>
+          {taskError}
+        </div>
+      )}
       <div style={S.sheetFtr}>
         <button onClick={onClose} style={{ ...S.btn, flex:1, background:'#F1F5F9', color:'#475569' }}>Annuler</button>
         <button onClick={handleAdd} style={{ ...S.btn, flex:2, background:'#2563EB', color:'#fff' }}>+ Ajouter</button>
