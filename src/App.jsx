@@ -266,6 +266,7 @@ export default function App() {
                 fournisseurs={fournisseurs}
                 setFournisseurs={setFournisseurs}
                 prixHist={prixHist}
+                setPrixHist={setPrixHist}
                 user={user}
                 fromDashboard={navSource === 'dashboard'}
                 onBack={handleBack}
