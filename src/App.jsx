@@ -24,7 +24,7 @@ function Sidebar({ page, setPage, alertDlc, alertCmd, user, profile, onLogout })
   return (
     <aside className="sidebar">
       <div className="sidebar-logo">
-        <span className="sidebar-logo-icon">✦</span>
+        <div className="sidebar-logo-orb">✦</div>
         <span className="sidebar-logo-text">Aria</span>
       </div>
 
@@ -151,7 +151,9 @@ function BottomNav({ page, setPage, alertDlc, alertCmd }) {
             className={`bnav-item${page === item.k ? ' active' : ''}`}
             onClick={() => setPage(item.k)}
           >
-            <span className="bnav-icon">{item.emoji}</span>
+            <span className="bnav-icon-pill">
+              <span className="bnav-icon">{item.emoji}</span>
+            </span>
             {badge > 0 && <span className="badge badge-danger bnav-badge">{badge}</span>}
             <span className="bnav-label">{item.label}</span>
           </button>
@@ -279,6 +281,7 @@ export default function App() {
                 prixHist={prixHist}
                 fournisseurs={fournisseurs}
                 setPage={setPageFromDashboard}
+                profile={profile}
               />
             )}
             {page === 'reception' && (

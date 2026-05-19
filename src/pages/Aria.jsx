@@ -16,10 +16,10 @@ if (typeof document !== 'undefined' && !document.getElementById(STYLE_ID)) {
 const F = "'Plus Jakarta Sans','Inter',sans-serif"
 
 const SUGGESTIONS = [
-  { text:'Quel est mon stock critique ?',      icon:'⚠️' },
-  { text:'Génère ma liste de commandes',        icon:'📋' },
-  { text:'Analyse mes DLC',                     icon:'📅' },
-  { text:'Comment va mon établissement ?',      icon:'📊' },
+  { text:'Quel est mon stock critique ?',      icon:'⚠️', color:'#EF4444', bg:'#FEF2F2' },
+  { text:'Génère ma liste de commandes',        icon:'📋', color:'#2563EB', bg:'#EFF6FF' },
+  { text:'Analyse mes DLC',                     icon:'📅', color:'#D97706', bg:'#FFFBEB' },
+  { text:'Comment va mon établissement ?',      icon:'📊', color:'#10B981', bg:'#ECFDF5' },
 ]
 
 const WELCOME = (name) => ({
@@ -49,21 +49,25 @@ function Typing() {
 function Bubble({ msg }) {
   const isUser = msg.role === 'user'
   return (
-    <div style={{ display:'flex', flexDirection:'column', alignItems: isUser ? 'flex-end' : 'flex-start', gap:3, animation:'aria-msg .2s ease' }}>
+    <div style={{ display:'flex', flexDirection:'column', alignItems: isUser ? 'flex-end' : 'flex-start', gap:4, animation:'aria-msg .22s ease' }}>
       {!isUser && (
-        <span style={{ fontSize:11, fontWeight:700, color:'#6366F1', letterSpacing:'.3px' }}>✦ Aria</span>
+        <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+          <div style={{ width:20, height:20, borderRadius:'50%', background:'linear-gradient(135deg,#4F46E5,#2563EB)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:10, color:'#fff' }}>✦</div>
+          <span style={{ fontSize:11, fontWeight:700, color:'#6366F1', letterSpacing:'.3px' }}>Aria</span>
+        </div>
       )}
       <div style={isUser ? {
         maxWidth:'78%', background:'linear-gradient(135deg,#2563EB,#1D4ED8)', color:'#fff',
-        padding:'11px 15px', borderRadius:'18px 4px 18px 18px',
-        fontSize:14, lineHeight:1.6, wordBreak:'break-word',
-        boxShadow:'0 2px 10px rgba(37,99,235,.3)',
+        padding:'12px 16px', borderRadius:'20px 6px 20px 20px',
+        fontSize:14, lineHeight:1.65, wordBreak:'break-word',
+        boxShadow:'0 4px 16px rgba(37,99,235,.28), 0 1px 4px rgba(37,99,235,.18)',
         fontFamily:F,
       } : {
         maxWidth:'84%', background:'#fff', color:'#0F172A',
-        padding:'12px 16px', borderRadius:'4px 18px 18px 18px',
-        fontSize:14, lineHeight:1.7, wordBreak:'break-word',
-        border:'1px solid #E2E8F0', boxShadow:'0 1px 4px rgba(0,0,0,.06)',
+        padding:'13px 17px', borderRadius:'6px 20px 20px 20px',
+        fontSize:14, lineHeight:1.75, wordBreak:'break-word',
+        border:'1px solid #E8EDF4',
+        boxShadow:'0 2px 12px rgba(15,23,42,.06), 0 1px 3px rgba(15,23,42,.04)',
         fontFamily:F,
       }}>
         {msg.content.split('\n').map((line, i, arr) => (
@@ -71,7 +75,7 @@ function Bubble({ msg }) {
         ))}
       </div>
       {msg.time && (
-        <span style={{ fontSize:10, color:'#CBD5E1', fontFamily:F }}>{msg.time}</span>
+        <span style={{ fontSize:10, color:'#CBD5E1', fontFamily:F, marginTop:1 }}>{msg.time}</span>
       )}
     </div>
   )
@@ -299,17 +303,17 @@ export default function Aria({ stock = [], fournisseurs = [], scanLog = [], user
 
       {/* ── Suggestions rapides ──────────────────────────────────────────── */}
       {showSuggestions && (
-        <div style={{ padding:'0 12px 8px', display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, background:'#F8FAFC', flexShrink:0 }}>
+        <div style={{ padding:'0 12px 10px', display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, background:'#F8FAFC', flexShrink:0 }}>
           {SUGGESTIONS.map(s => (
             <button
               key={s.text}
               onClick={() => handleSend(s.text)}
-              style={{ padding:'10px 12px', border:'1.5px solid #E2E8F0', borderRadius:12, background:'#fff', fontSize:12.5, color:'#0F172A', cursor:'pointer', fontFamily:F, textAlign:'left', display:'flex', alignItems:'center', gap:8, lineHeight:1.3 }}
-              onMouseOver={e => { e.currentTarget.style.borderColor='#2563EB'; e.currentTarget.style.background='#EFF6FF' }}
-              onMouseOut={e =>  { e.currentTarget.style.borderColor='#E2E8F0'; e.currentTarget.style.background='#fff' }}
+              style={{ padding:'11px 13px', border:`1.5px solid ${s.color}30`, borderRadius:14, background:s.bg, fontSize:12.5, color:'#0F172A', cursor:'pointer', fontFamily:F, textAlign:'left', display:'flex', alignItems:'center', gap:8, lineHeight:1.3, transition:'transform .12s, box-shadow .12s' }}
+              onMouseOver={e => { e.currentTarget.style.transform='translateY(-1px)'; e.currentTarget.style.boxShadow=`0 4px 12px ${s.color}22` }}
+              onMouseOut={e =>  { e.currentTarget.style.transform='none'; e.currentTarget.style.boxShadow='none' }}
             >
               <span style={{ fontSize:18, flexShrink:0 }}>{s.icon}</span>
-              <span>{s.text}</span>
+              <span style={{ fontWeight:500 }}>{s.text}</span>
             </button>
           ))}
         </div>
