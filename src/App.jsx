@@ -13,6 +13,7 @@ import AriaPage    from './pages/Aria'
 import Recettes    from './pages/Recettes'
 import MiseEnPlace from './pages/MiseEnPlace'
 import Business    from './pages/Business'
+import Equipe      from './pages/Equipe'
 
 // ─── Sidebar ──────────────────────────────────────────────────────────────────
 
@@ -307,6 +308,14 @@ export default function App() {
                 stock={stock}
                 fournisseurs={fournisseurs}
                 prixHist={prixHist}
+                fromDashboard={navSource === 'dashboard'}
+                onBack={handleBack}
+              />
+            )}
+            {page === 'equipe' && (
+              <Equipe
+                user={user}
+                profile={profile}
                 fromDashboard={navSource === 'dashboard'}
                 onBack={handleBack}
               />

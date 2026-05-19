@@ -5,11 +5,64 @@
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages'
 const MODEL         = 'claude-sonnet-4-6'
 
+const ROLE_LABELS = {
+  proprietaire: 'Propriétaire',
+  chef:         'Chef de cuisine',
+  second:       'Second de cuisine',
+  cuisinier:    'Cuisinier',
+  patissier:    'Pâtissier',
+  employe:      'Employé',
+}
+
+const ROLE_PERMISSIONS = {
+  proprietaire: {
+    droits:     'accès total à toutes les fonctionnalités',
+    interdit:   [],
+  },
+  chef: {
+    droits:     'accès total sauf finances/abonnement',
+    interdit:   [],
+  },
+  second: {
+    droits:     'stock lecture/écriture, recettes, commandes, mise en place, HACCP, marges',
+    interdit:   ['supprimer définitivement des données', 'gérer les abonnements'],
+  },
+  cuisinier: {
+    droits:     'stock lecture/écriture, températures, mise en place, réception',
+    interdit:   ['passer des commandes fournisseurs', 'consulter les marges ou finances', "gérer l'équipe", 'supprimer des recettes'],
+  },
+  patissier: {
+    droits:     'stock lecture/écriture, recettes, mise en place, températures',
+    interdit:   ['passer des commandes fournisseurs', 'consulter les marges ou finances', "gérer l'équipe"],
+  },
+  employe: {
+    droits:     'stock lecture seule, températures, mise en place',
+    interdit:   ['modifier ou supprimer le stock', 'passer des commandes', 'consulter les marges ou finances', "gérer l'équipe", 'modifier ou supprimer les recettes'],
+  },
+}
+
+function buildRoleSection(role) {
+  if (!role || role === 'superadmin') return ''
+  const info     = ROLE_PERMISSIONS[role]
+  if (!info) return ''
+  const label    = ROLE_LABELS[role] || role
+
+  let section = `\n## Rôle de l'utilisateur : ${label}\nDroits disponibles : ${info.droits}.`
+
+  if (info.interdit.length > 0) {
+    const list = info.interdit.join(', ')
+    section += `\nActions NON autorisées pour ce rôle : ${list}.`
+    section += `\n\nRÈGLE IMPÉRATIVE : si l'utilisateur te demande d'effectuer une action non autorisée (ex : ${info.interdit[0]}), réponds EXACTEMENT cette phrase, sans t'en écarter :\n"Je suis désolée, cette action nécessite les droits de Chef ou Second de cuisine. Merci de contacter votre responsable."\nAdapte uniquement le rôle minimal requis selon l'action demandée (Chef, Second, Propriétaire…). Ne fournis aucune aide pour contourner cette restriction.`
+  }
+
+  return section
+}
+
 function buildSystemPrompt(context) {
   const name = context?.user_name
   const role = context?.user_role
   const who  = name
-    ? `Tu travailles avec ${name}${role ? ` (${role})` : ''}`
+    ? `Tu travailles avec ${name}${role ? ` (${ROLE_LABELS[role] || role})` : ''}`
     : 'Tu assistes le personnel de cuisine'
 
   return `Tu es Aria, assistante IA experte en gestion de cuisine professionnelle, intégrée à l'application Aria.
@@ -21,6 +74,7 @@ ${who}.
 - HACCP : normes températures (réfrigération ≤4°C, chaud ≥63°C, réception ≤8°C, refroidissement ≤10°C en <2h), alertes non-conformités, traçabilité
 - Gestion des coûts : food cost, variations de prix, économies potentielles, ratios
 - Organisation : mise en place, planning cuisine, gestion du temps de service
+- Équipe & Formation : suivi HACCP des employés, onboarding par rôle
 
 ## Utilisation du contexte
 Tu reçois les données réelles et actuelles de l'établissement. Exploite-les précisément :
@@ -29,6 +83,7 @@ Tu reçois les données réelles et actuelles de l'établissement. Exploite-les 
 - Référence les fournisseurs connus par leur nom
 - Calcule les jours restants avant expiration (DLC)
 - Identifie les priorités à partir des alertes (sous seuil, DLC proches, températures non-conformes)
+- Adapte tes suggestions selon le rôle de l'utilisateur : un employé reçoit des conseils opérationnels simples, un chef des analyses stratégiques
 
 ## Comportement
 - Français, ton chaleureux et professionnel — tu fais partie de l'équipe cuisine
@@ -42,7 +97,8 @@ Tu reçois les données réelles et actuelles de l'établissement. Exploite-les 
 - Listes à puces pour les produits, actions et recommandations
 - Évite les titres Markdown (###) sauf pour les rapports longs
 - Termine par une courte suggestion d'action suivante quand pertinent
-- Pour les bons de commande : liste structurée produit / quantité / fournisseur`
+- Pour les bons de commande : liste structurée produit / quantité / fournisseur
+${buildRoleSection(role)}`
 }
 
 function buildContextBlock(context) {

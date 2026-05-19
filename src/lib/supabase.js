@@ -138,6 +138,22 @@ export async function insertCouvert(couvert) {
   return { data, error };
 }
 
+export async function fetchEquipeMembres(ownerId) {
+  const { data, error } = await supabase
+    .from('equipe_membres')
+    .select('*')
+    .eq('owner_id', ownerId)
+    .order('created_at', { ascending: true })
+  return { data: data || [], error }
+}
+
+export async function upsertEquipeMembre(membre) {
+  const { data, error } = await supabase
+    .from('equipe_membres')
+    .upsert(membre, { onConflict: 'id' })
+  return { data, error }
+}
+
 export async function fetchAriaConversation(userId) {
   const { data, error } = await supabase
     .from("aria_conversations").select("*").eq("user_id",userId)

@@ -49,12 +49,13 @@ export const MODES_COMMANDE = [
 ];
 
 export const ROLES = {
-  superadmin:{label:"Super Admin",icon:"👑",color:"#F59E0B"},
-  proprietaire:{label:"Propriétaire",icon:"🏪",color:"#6366F1"},
-  chef:{label:"Chef",icon:"👨‍🍳",color:"#10B981"},
-  cuisinier:{label:"Cuisinier",icon:"🧑‍🍳",color:"#3B82F6"},
-  patissier:{label:"Pâtissier",icon:"🎂",color:"#EC4899"},
-  employe:{label:"Employé",icon:"👤",color:"#94A3B8"},
+  superadmin:   {label:"Super Admin",        icon:"👑", color:"#F59E0B"},
+  proprietaire: {label:"Propriétaire",       icon:"🏪", color:"#6366F1"},
+  chef:         {label:"Chef de cuisine",    icon:"👨‍🍳", color:"#10B981"},
+  second:       {label:"Second de cuisine",  icon:"🥈", color:"#0EA5E9"},
+  cuisinier:    {label:"Cuisinier",          icon:"🧑‍🍳", color:"#3B82F6"},
+  patissier:    {label:"Pâtissier",          icon:"🎂",  color:"#EC4899"},
+  employe:      {label:"Employé",            icon:"👤",  color:"#94A3B8"},
 };
 
 export const NAV_ITEMS = [
@@ -66,6 +67,7 @@ export const NAV_ITEMS = [
   {k:"mise_en_place",icon:"📋",label:"Mise en place", emoji:"📋"},
   {k:"haccp",       icon:"✓", label:"HACCP",         emoji:"✅"},
   {k:"business",    icon:"💼", label:"Business",      emoji:"💼"},
+  {k:"equipe",      icon:"👥", label:"Équipe",        emoji:"👥"},
   {k:"aria",        icon:"✦", label:"Aria",          emoji:"🤖"},
 ];
 
