@@ -127,3 +127,15 @@ export async function deleteMiseEnPlace(id) {
   const { error } = await supabase.from("mise_en_place").delete().eq("id",id);
   return { error };
 }
+
+export async function fetchAriaConversation(userId) {
+  const { data, error } = await supabase
+    .from("aria_conversations").select("*").eq("user_id",userId)
+    .order("updated_at",{ascending:false}).limit(1).single();
+  return { data, error };
+}
+
+export async function upsertAriaConversation(conv) {
+  const { data, error } = await supabase.from("aria_conversations").upsert(conv,{onConflict:"id"});
+  return { data, error };
+}

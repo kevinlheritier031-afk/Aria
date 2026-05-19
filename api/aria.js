@@ -1,90 +1,130 @@
 // POST /api/aria
-// Body: { message, history: [{role, content}], context: {date, stock, fournisseurs, scans_recents}, userId }
+// Body: { message, history: [{role,content}], context: {date,user_name,user_role,stock,fournisseurs,scans_recents,temperatures,stats}, userId }
 // Returns: { reply }
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages'
 const MODEL         = 'claude-sonnet-4-6'
 
-const SYSTEM_PROMPT = `Tu es Aria, assistante IA experte en gestion de cuisine professionnelle, intégrée à l'application Aria.
+function buildSystemPrompt(context) {
+  const name = context?.user_name
+  const role = context?.user_role
+  const who  = name
+    ? `Tu travailles avec ${name}${role ? ` (${role})` : ''}`
+    : 'Tu assistes le personnel de cuisine'
 
-## Ton rôle
-Tu assistes les chefs, cuisiniers et gestionnaires de restaurants dans leur quotidien opérationnel :
-- Analyser l'état du stock et détecter les risques (DLC critiques, ruptures imminentes)
-- Anticiper et optimiser les commandes fournisseurs
-- Veiller à la conformité HACCP et à la sécurité alimentaire
-- Conseiller sur la gestion des coûts matières et les variations de prix
-- Répondre à toute question liée à la gestion d'une cuisine professionnelle
+  return `Tu es Aria, assistante IA experte en gestion de cuisine professionnelle, intégrée à l'application Aria.
+${who}.
 
-## Contexte disponible
-Tu reçois en temps réel les données de l'établissement : stock actuel, fournisseurs configurés et historique des réceptions. Exploite ces données pour donner des réponses précises et actionnables, pas génériques.
+## Ton expertise
+- Stock et traçabilité : DLC, seuils critiques, rotations, catégories de produits
+- Commandes fournisseurs : optimisation, bons de commande, comparaison prix, négociation
+- HACCP : normes températures (réfrigération ≤4°C, chaud ≥63°C, réception ≤8°C, refroidissement ≤10°C en <2h), alertes non-conformités, traçabilité
+- Gestion des coûts : food cost, variations de prix, économies potentielles, ratios
+- Organisation : mise en place, planning cuisine, gestion du temps de service
 
-## Règles de comportement
-- Répondre en français, ton professionnel mais accessible
-- Être concis et direct : prioriser les informations critiques
-- Donner des chiffres exacts quand les données sont disponibles
-- Proposer des actions concrètes, pas seulement des constats
-- Pour les alertes DLC : mentionner le produit, la date et l'action recommandée
-- Pour les commandes : lister les produits sous seuil avec les quantités suggérées
-- Ne jamais inventer de données non fournies dans le contexte
-- Si tu n'as pas assez d'informations, le dire clairement et demander
+## Utilisation du contexte
+Tu reçois les données réelles et actuelles de l'établissement. Exploite-les précisément :
+- Cite les produits par leur nom exact issu du stock
+- Donne les quantités et unités réelles
+- Référence les fournisseurs connus par leur nom
+- Calcule les jours restants avant expiration (DLC)
+- Identifie les priorités à partir des alertes (sous seuil, DLC proches, températures non-conformes)
+
+## Comportement
+- Français, ton chaleureux et professionnel — tu fais partie de l'équipe cuisine
+- Direct : l'information critique en premier
+- Actionnable : chaque réponse contient une action concrète à réaliser
+- Précis : chiffres exacts, pas d'approximations quand les données sont disponibles
+- Honnête : si une information manque dans le contexte, dis-le clairement et demande
 
 ## Format des réponses
-- Réponses courtes pour les questions simples
-- Listes à puces pour les énumérations de produits ou actions
-- Pas de markdown excessif (pas de ### ou *** superflu)
-- Terminer par une question ou suggestion d'action si pertinent`
+- Concis pour les questions simples, détaillé si analyse explicitement demandée
+- Listes à puces pour les produits, actions et recommandations
+- Évite les titres Markdown (###) sauf pour les rapports longs
+- Termine par une courte suggestion d'action suivante quand pertinent
+- Pour les bons de commande : liste structurée produit / quantité / fournisseur`
+}
 
 function buildContextBlock(context) {
   if (!context) return ''
 
   const lines = [`📅 Date : ${context.date || 'inconnue'}`]
 
+  if (context.stats) {
+    const s = context.stats
+    lines.push(`📊 Résumé : ${s.stock_total} produits en stock — ${s.stock_critique} DLC critiques — ${s.sous_seuil} sous seuil — ${s.fournisseurs} fournisseurs`)
+  }
+
   if (context.stock?.length > 0) {
-    const alerts = context.stock.filter(i => {
-      if (!i.dlc) return false
-      const [d, m, y] = i.dlc.split('/')
-      const dt = new Date(`${y}-${m}-${d}`)
-      const days = Math.ceil((dt - new Date()) / 86400000)
-      return days <= 7
+    lines.push(`\n📦 Stock (${context.stock.length} produits) :`)
+    context.stock.forEach(i => {
+      const dlcPart   = i.dlc        ? ` | DLC ${i.dlc}` : ''
+      const seuilPart = i.seuil_min  ? ` | seuil min ${i.seuil_min} ${i.u}` : ''
+      const pxPart    = i.px         ? ` | ${i.px}€/${i.u}` : ''
+      const fourPart  = i.four       ? ` [${i.four}]` : ''
+      lines.push(`  • ${i.nom} — ${i.q} ${i.u} (${i.cat || '?'})${dlcPart}${seuilPart}${pxPart}${fourPart}`)
     })
 
-    lines.push(`\n📦 Stock : ${context.stock.length} produits`)
-
-    if (alerts.length > 0) {
-      lines.push(`⚠️ DLC critiques (≤ J-7) :`)
-      alerts.slice(0, 15).forEach(i => {
-        lines.push(`  • ${i.nom} — ${i.q} ${i.u} — DLC ${i.dlc}`)
+    const dlcAlerts = context.stock.filter(i => {
+      if (!i.dlc) return false
+      const [d, m, y] = i.dlc.split('/')
+      return Math.ceil((new Date(`${y}-${m}-${d}`) - new Date()) / 86400000) <= 7
+    })
+    if (dlcAlerts.length > 0) {
+      lines.push(`\n⚠️ Alertes DLC imminentes (≤ J-7) :`)
+      dlcAlerts.forEach(i => {
+        const [d, m, y] = i.dlc.split('/')
+        const days = Math.ceil((new Date(`${y}-${m}-${d}`) - new Date()) / 86400000)
+        const urgence = days < 0 ? 'EXPIRÉ' : `J-${days}`
+        lines.push(`  • ${i.nom} — ${i.q} ${i.u} — ${urgence} (DLC: ${i.dlc})${i.four ? ` — four: ${i.four}` : ''}`)
       })
     }
 
-    const critiques = context.stock.filter(i => {
+    const sousSeuil = context.stock.filter(i => {
       const s = parseFloat(i.seuil_min)
-      return isNaN(s) ? i.q <= 2 : i.q <= s
+      return isNaN(s) ? parseFloat(i.q) <= 2 : parseFloat(i.q) <= s
     })
-    if (critiques.length > 0) {
-      lines.push(`📉 Produits sous seuil :`)
-      critiques.slice(0, 10).forEach(i => {
-        lines.push(`  • ${i.nom} — ${i.q} ${i.u} (seuil ${i.seuil_min ?? 2} ${i.u}) — four: ${i.four || '—'}`)
+    if (sousSeuil.length > 0) {
+      lines.push(`\n📉 Produits sous seuil :`)
+      sousSeuil.forEach(i => {
+        lines.push(`  • ${i.nom} — ${i.q} ${i.u} (seuil: ${i.seuil_min ?? 2} ${i.u})${i.four ? ` — fournisseur: ${i.four}` : ''}`)
       })
     }
   }
 
   if (context.fournisseurs?.length > 0) {
-    lines.push(`\n🚚 Fournisseurs : ${context.fournisseurs.map(f => `${f.nom} (${f.mode}${f.jours?.length ? ', ' + f.jours.join('/') : ''})`).join(', ')}`)
+    lines.push(`\n🚚 Fournisseurs (${context.fournisseurs.length}) :`)
+    context.fournisseurs.forEach(f => {
+      const contact = [f.tel && `📞 ${f.tel}`, f.email && `✉️ ${f.email}`].filter(Boolean).join(' ')
+      const jours   = f.jours?.length ? `, livraison: ${f.jours.join('/')}` : ''
+      lines.push(`  • ${f.nom} — mode: ${f.mode || '—'}${jours}${contact ? ` — ${contact}` : ''}`)
+    })
   }
 
   if (context.scans_recents?.length > 0) {
-    lines.push(`\n📷 Dernières réceptions :`)
-    context.scans_recents.slice(0, 5).forEach(s => {
-      lines.push(`  • ${s.date_scan} — ${s.four || '—'} — ${s.nb} produits — ${s.conf}`)
+    lines.push(`\n📷 Dernières réceptions (${context.scans_recents.length}) :`)
+    context.scans_recents.forEach(s => {
+      const total = s.total ? ` — ${Number(s.total).toFixed(2)} €` : ''
+      lines.push(`  • ${s.date_scan || '—'} — ${s.four || 'Fournisseur ?'} — ${s.nb || 0} produits — ${s.conf}${total}`)
     })
+  }
+
+  if (context.temperatures?.length > 0) {
+    lines.push(`\n🌡️ Températures récentes (${context.temperatures.length}) :`)
+    context.temperatures.slice(0, 12).forEach(t => {
+      const ok = t.conforme === true ? '✅' : t.conforme === false ? '⚠️ NON CONFORME' : '—'
+      lines.push(`  • ${(t.created_at || '').slice(0, 16)} — ${t.contexte} — ${t.valeur}°C ${ok}`)
+    })
+    const ncCount = context.temperatures.filter(t => t.conforme === false).length
+    if (ncCount > 0) {
+      lines.push(`  → ${ncCount} non-conformité${ncCount > 1 ? 's' : ''} identifiée${ncCount > 1 ? 's' : ''}`)
+    }
   }
 
   return lines.join('\n')
 }
 
 export default async function handler(req, res) {
-  // CORS
   res.setHeader('Access-Control-Allow-Origin',  '*')
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
@@ -98,15 +138,14 @@ export default async function handler(req, res) {
   const { message, history = [], context, userId } = req.body ?? {}
   if (!message?.trim()) return res.status(400).json({ error: 'Champ "message" manquant' })
 
-  // Injecter le contexte dans le premier message utilisateur de cet échange
-  const contextBlock = buildContextBlock(context)
-  const userContent  = contextBlock
-    ? `[Contexte établissement]\n${contextBlock}\n\n[Question]\n${message}`
+  const systemPrompt  = buildSystemPrompt(context)
+  const contextBlock  = buildContextBlock(context)
+  const userContent   = contextBlock
+    ? `[Contexte établissement]\n${contextBlock}\n\n[Message]\n${message}`
     : message
 
-  // Construire l'historique : max 10 échanges précédents
   const historyMessages = history
-    .slice(-10)
+    .slice(-12)
     .filter(m => m.role && m.content)
     .map(m => ({ role: m.role, content: m.content }))
 
@@ -119,14 +158,14 @@ export default async function handler(req, res) {
     const response = await fetch(ANTHROPIC_URL, {
       method: 'POST',
       headers: {
-        'Content-Type':    'application/json',
-        'x-api-key':       apiKey,
+        'Content-Type':      'application/json',
+        'x-api-key':         apiKey,
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
         model:      MODEL,
-        max_tokens: 1024,
-        system:     SYSTEM_PROMPT,
+        max_tokens: 2048,
+        system:     systemPrompt,
         messages,
       }),
     })
