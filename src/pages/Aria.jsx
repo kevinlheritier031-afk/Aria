@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { ROLES, fdate, ftime, uid, dlcStatus } from '../constants'
-import { fetchAriaConversation, upsertAriaConversation, fetchTemperatures } from '../lib/supabase'
+import { fetchAriaConversation, upsertAriaConversation, fetchTemperatures, fetchRecettes, fetchCouverts, insertAriaAnalytic } from '../lib/supabase'
 
 const STYLE_ID = 'aria-chat-kf'
 if (typeof document !== 'undefined' && !document.getElementById(STYLE_ID)) {
@@ -15,12 +15,24 @@ if (typeof document !== 'undefined' && !document.getElementById(STYLE_ID)) {
 
 const F = "'Plus Jakarta Sans','Inter',sans-serif"
 
-const SUGGESTIONS = [
-  { text:'Quel est mon stock critique ?',      icon:'⚠️', color:'#EF4444', bg:'#FEF2F2' },
-  { text:'Génère ma liste de commandes',        icon:'📋', color:'#2563EB', bg:'#EFF6FF' },
-  { text:'Analyse mes DLC',                     icon:'📅', color:'#D97706', bg:'#FFFBEB' },
-  { text:'Comment va mon établissement ?',      icon:'📊', color:'#10B981', bg:'#ECFDF5' },
-]
+function getTimeSuggestions() {
+  const h = new Date().getHours()
+  if (h < 11) return [
+    { text:'Quels produits à commander ?',      icon:'🛒', color:'#2563EB', bg:'#EFF6FF' },
+    { text:'Résumé températures de la nuit',    icon:'🌡️', color:'#6366F1', bg:'#EEF2FF' },
+    { text:'Mise en place du jour',             icon:'📋', color:'#10B981', bg:'#ECFDF5' },
+  ]
+  if (h < 15) return [
+    { text:'Analyse des marges du service',     icon:'📊', color:'#D97706', bg:'#FFFBEB' },
+    { text:'Alertes DLC urgentes',              icon:'⚠️', color:'#EF4444', bg:'#FEF2F2' },
+    { text:'Recettes disponibles ce soir',      icon:'🍽️', color:'#10B981', bg:'#ECFDF5' },
+  ]
+  return [
+    { text:'Résumé HACCP de la journée',        icon:'✅', color:'#10B981', bg:'#ECFDF5' },
+    { text:'Optimise mes marges',               icon:'💡', color:'#2563EB', bg:'#EFF6FF' },
+    { text:'Rapport de clôture',                icon:'📄', color:'#6366F1', bg:'#EEF2FF' },
+  ]
+}
 
 const WELCOME = (name) => ({
   id:   'welcome',
@@ -91,31 +103,65 @@ export default function Aria({ stock = [], fournisseurs = [], scanLog = [], user
   const [input,     setInput]     = useState('')
   const [typing,    setTyping]    = useState(false)
   const [error,     setError]     = useState('')
-  const [convId,    setConvId]    = useState(null)
-  const [temps,     setTemps]     = useState([])
+  const [convId,     setConvId]     = useState(null)
+  const [temps,      setTemps]      = useState([])
+  const [recettes,   setRecettes]   = useState([])
+  const [couverts,   setCouverts]   = useState([])
+  const [dataLoaded, setDataLoaded] = useState(false)
 
-  const bottomRef = useRef()
-  const inputRef  = useRef()
+  const bottomRef    = useRef()
+  const inputRef     = useRef()
+  const alertFiredRef = useRef(false)
 
-  // Load conversation history + temperatures
+  // Load conversation history + full context
   useEffect(() => {
     if (!user?.id) return
     Promise.all([
       fetchAriaConversation(user.id),
       fetchTemperatures(user.id),
-    ]).then(([{ data: conv }, { data: t }]) => {
+      fetchRecettes(user.id),
+      fetchCouverts(user.id),
+    ]).then(([{ data: conv }, { data: t }, { data: r }, { data: c }]) => {
       if (conv?.messages?.length) {
         setMessages(conv.messages)
         setConvId(conv.id)
       }
       if (t?.length) setTemps(t.slice(0, 20))
-    }).catch(() => {})
+      if (r?.length) setRecettes(r)
+      if (c?.length) setCouverts(c)
+      setDataLoaded(true)
+    }).catch(() => setDataLoaded(true))
   }, [user])
 
   // Auto-scroll sur nouveau message
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, typing])
+
+  // Alertes proactives au chargement
+  useEffect(() => {
+    if (!dataLoaded || alertFiredRef.current) return
+    if (messages.length !== 1) return
+
+    const expired  = stock.filter(i => dlcStatus(i.dlc) === 'expired')
+    const critical = stock.filter(i => dlcStatus(i.dlc) === 'critical')
+    const ncTemps  = temps.filter(t => t.conforme === false)
+
+    const alerts = []
+    if (expired.length  > 0) alerts.push(`🗑️ ${expired.length} produit(s) expiré(s) à retirer du stock`)
+    if (critical.length > 0) alerts.push(`⚠️ ${critical.length} produit(s) en DLC J-3 ou moins`)
+    if (ncTemps.length  > 0) alerts.push(`🌡️ ${ncTemps.length} température(s) non conforme(s)`)
+
+    if (alerts.length > 0) {
+      alertFiredRef.current = true
+      setMessages(prev => [...prev, {
+        id:      uid(),
+        role:    'assistant',
+        content: `⚠️ Bonjour${name ? ` ${name}` : ''} ! J'ai détecté ${alerts.length} alerte${alerts.length > 1 ? 's' : ''} :\n\n${alerts.map((a, i) => `${i + 1}. ${a}`).join('\n')}\n\nVoulez-vous que je vous aide à les traiter en priorité ?`,
+        time:    ftime(),
+      }])
+    }
+  }, [dataLoaded, messages.length, stock, temps, name])
 
   function buildContext() {
     const critDlcCount = stock.filter(i => {
@@ -128,10 +174,20 @@ export default function Aria({ stock = [], fournisseurs = [], scanLog = [], user
       return isNaN(s) ? parseFloat(i.q) <= 2 : parseFloat(i.q) <= s
     }).length
 
+    const couverts7j = (() => {
+      const weekAgo = new Date(); weekAgo.setDate(weekAgo.getDate() - 7)
+      return couverts.filter(c => {
+        if (!c.date) return false
+        const [d, m, y] = c.date.split('/')
+        return y && new Date(`${y}-${m}-${d}`) >= weekAgo
+      }).reduce((s, c) => s + (c.nb_couverts || 0), 0)
+    })()
+
     return {
       date:          fdate(),
       user_name:     profile?.name  || null,
       user_role:     profile?.role  || null,
+      recettes_count: recettes.length,
       stock:         stock.slice(0, 60).map(i => ({
         nom: i.nom, q: i.q, u: i.u, cat: i.cat,
         dlc: i.dlc, seuil_min: i.seuil_min, four: i.four, px: i.px,
@@ -147,12 +203,27 @@ export default function Aria({ stock = [], fournisseurs = [], scanLog = [], user
         created_at: t.created_at?.slice(0, 16),
       })),
       stats: {
-        stock_total:    stock.length,
-        stock_critique: critDlcCount,
-        sous_seuil:     sousSeuil,
-        fournisseurs:   fournisseurs.length,
+        stock_total:      stock.length,
+        stock_critique:   critDlcCount,
+        sous_seuil:       sousSeuil,
+        fournisseurs:     fournisseurs.length,
+        recettes:         recettes.length,
+        couverts_semaine: couverts7j,
       },
     }
+  }
+
+  async function trackAnalytic(message) {
+    if (!user?.id) return
+    const msg   = message.toLowerCase()
+    const topic = msg.includes('stock') || msg.includes('produit')  ? 'stock'
+                : msg.includes('haccp') || msg.includes('temp')     ? 'haccp'
+                : msg.includes('recette')                            ? 'recette'
+                : msg.includes('marge') || msg.includes('business') ? 'business'
+                : 'autre'
+    try {
+      await insertAriaAnalytic({ id: uid(), etablissement_id: user.id, date: fdate(), message_count: 1, topic_tags: topic, created_at: new Date().toISOString() })
+    } catch {}
   }
 
   async function saveConversation(msgs) {
@@ -203,6 +274,7 @@ export default function Aria({ stock = [], fournisseurs = [], scanLog = [], user
       const final   = [...withUser, ariaMsg]
       setMessages(final)
       await saveConversation(final)
+      trackAnalytic(msg)
     } catch (e) {
       setError(`Impossible de joindre Aria : ${e.message}`)
       setMessages(ms => [...ms, { id: uid(), role:'assistant', content:"Je ne suis pas disponible pour l'instant. Vérifiez la connexion et réessayez.", time: ftime() }])
@@ -303,8 +375,8 @@ export default function Aria({ stock = [], fournisseurs = [], scanLog = [], user
 
       {/* ── Suggestions rapides ──────────────────────────────────────────── */}
       {showSuggestions && (
-        <div style={{ padding:'0 12px 10px', display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, background:'#F8FAFC', flexShrink:0 }}>
-          {SUGGESTIONS.map(s => (
+        <div style={{ padding:'0 12px 10px', display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:8, background:'#F8FAFC', flexShrink:0 }}>
+          {getTimeSuggestions().map(s => (
             <button
               key={s.text}
               onClick={() => handleSend(s.text)}

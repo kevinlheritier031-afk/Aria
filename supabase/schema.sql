@@ -189,3 +189,70 @@ $$ language plpgsql security definer;
 create or replace trigger on_auth_user_created
   after insert on auth.users
   for each row execute procedure public.handle_new_user();
+
+-- ── Ajouts Phase 12-13 ────────────────────────────────────────────────────────
+
+-- Colonnes manquantes sur établissements
+alter table if exists etablissements
+  add column if not exists nb_employes text,
+  add column if not exists settings jsonb default '{}';
+
+-- onboarding_completed est stocké dans auth.users.raw_user_meta_data (via updateUser).
+-- Aucune migration SQL nécessaire — géré côté client.
+
+-- equipe_membres
+create table if not exists equipe_membres (
+  id          uuid default uuid_generate_v4() primary key,
+  owner_id    uuid references auth.users on delete cascade,
+  name        text not null,
+  role        text not null default 'employe',
+  pin_code    text,
+  created_at  timestamptz default now()
+);
+alter table equipe_membres enable row level security;
+create policy if not exists "Equipe owner" on equipe_membres
+  for all using (auth.uid() = owner_id);
+
+-- haccp_zones
+create table if not exists haccp_zones (
+  id                uuid default uuid_generate_v4() primary key,
+  etablissement_id  uuid not null,
+  nom               text not null,
+  temp_min          numeric,
+  temp_max          numeric,
+  created_at        timestamptz default now()
+);
+alter table haccp_zones enable row level security;
+create policy if not exists "HACCP zones owner" on haccp_zones
+  for all using (auth.uid() = etablissement_id);
+
+-- aria_analytics
+create table if not exists aria_analytics (
+  id                uuid default uuid_generate_v4() primary key,
+  etablissement_id  uuid not null,
+  date              text,
+  message_count     integer default 1,
+  topic_tags        text,
+  created_at        timestamptz default now()
+);
+alter table aria_analytics enable row level security;
+create policy if not exists "Analytics owner" on aria_analytics
+  for all using (auth.uid() = etablissement_id);
+
+-- lab_results
+create table if not exists lab_results (
+  id                 uuid default uuid_generate_v4() primary key,
+  user_id            uuid references auth.users on delete cascade,
+  product_name       text,
+  analysis_date      text,
+  lab_name           text,
+  status             text,
+  dlc_certified      text,
+  recommendations    text,
+  certificate_number text,
+  raw_data           text,
+  created_at         timestamptz default now()
+);
+alter table lab_results enable row level security;
+create policy if not exists "Lab results owner" on lab_results
+  for all using (auth.uid() = user_id);

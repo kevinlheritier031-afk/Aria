@@ -17,6 +17,7 @@ const Business    = lazy(() => import('./pages/Business'))
 const Equipe      = lazy(() => import('./pages/Equipe'))
 const Kiosque     = lazy(() => import('./pages/Kiosque'))
 const Laboratoire = lazy(() => import('./pages/Laboratoire'))
+const Onboarding  = lazy(() => import('./pages/Onboarding'))
 
 const KNOWN_PAGES = new Set([...NAV_ITEMS.map(i => i.k), 'labo'])
 
@@ -289,6 +290,17 @@ export default function App() {
     return (
       <Suspense fallback={null}>
         <Auth onLogin={handleLogin} onTeamLogin={handleTeamLogin} />
+      </Suspense>
+    )
+  }
+
+  if (!user.isTeamMember && profile?.onboarding_completed === false) {
+    return (
+      <Suspense fallback={null}>
+        <Onboarding
+          user={user}
+          onComplete={() => setProfile(p => ({ ...p, onboarding_completed: true }))}
+        />
       </Suspense>
     )
   }

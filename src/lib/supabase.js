@@ -12,7 +12,12 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON, {
 });
 
 export async function signUp({ email, password, name, role }) {
-  const { data, error } = await supabase.auth.signUp({ email, password, options:{ data:{ name, role } } });
+  const { data, error } = await supabase.auth.signUp({ email, password, options:{ data:{ name, role, onboarding_completed: false } } });
+  return { data, error };
+}
+
+export async function updateUserMetadata(metadata) {
+  const { data, error } = await supabase.auth.updateUser({ data: metadata });
   return { data, error };
 }
 
@@ -178,6 +183,21 @@ export async function fetchLabResults(userId) {
 
 export async function insertLabResult(result) {
   const { data, error } = await supabase.from("lab_results").insert(result);
+  return { data, error };
+}
+
+export async function upsertEtablissement(etab) {
+  const { data, error } = await supabase.from('etablissements').upsert(etab, { onConflict: 'owner_id' });
+  return { data, error };
+}
+
+export async function insertHaccpZone(zone) {
+  const { data, error } = await supabase.from('haccp_zones').insert(zone);
+  return { data, error };
+}
+
+export async function insertAriaAnalytic(entry) {
+  const { data, error } = await supabase.from('aria_analytics').insert(entry);
   return { data, error };
 }
 

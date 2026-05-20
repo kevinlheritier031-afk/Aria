@@ -108,7 +108,9 @@ function buildContextBlock(context) {
 
   if (context.stats) {
     const s = context.stats
-    lines.push(`📊 Résumé : ${s.stock_total} produits en stock — ${s.stock_critique} DLC critiques — ${s.sous_seuil} sous seuil — ${s.fournisseurs} fournisseurs`)
+    const recettesPart  = s.recettes         !== undefined ? ` — ${s.recettes} recettes` : ''
+    const couvertsPart  = s.couverts_semaine !== undefined ? ` — ${s.couverts_semaine} couverts/semaine` : ''
+    lines.push(`📊 Résumé : ${s.stock_total} produits en stock — ${s.stock_critique} DLC critiques — ${s.sous_seuil} sous seuil — ${s.fournisseurs} fournisseurs${recettesPart}${couvertsPart}`)
   }
 
   if (context.stock?.length > 0) {
