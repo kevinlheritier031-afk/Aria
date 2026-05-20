@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react'
+import { useState, useEffect, useCallback, lazy, Suspense } from 'react'
 import { supabase, signOut, getSession, fetchStock, fetchFournisseurs, fetchScans, fetchPrix, getTeamSession, setTeamSession, clearTeamSession } from './lib/supabase'
 import { NAV_ITEMS, ROLES, initials, dlcStatus, isCritique } from './constants'
+import PullToRefresh from './components/PullToRefresh'
 
 // Pages — lazy-loaded for code-splitting
 const Auth        = lazy(() => import('./pages/Auth'))
@@ -14,8 +15,10 @@ const Recettes    = lazy(() => import('./pages/Recettes'))
 const MiseEnPlace = lazy(() => import('./pages/MiseEnPlace'))
 const Business    = lazy(() => import('./pages/Business'))
 const Equipe      = lazy(() => import('./pages/Equipe'))
+const Kiosque     = lazy(() => import('./pages/Kiosque'))
+const Laboratoire = lazy(() => import('./pages/Laboratoire'))
 
-const KNOWN_PAGES = new Set(NAV_ITEMS.map(i => i.k))
+const KNOWN_PAGES = new Set([...NAV_ITEMS.map(i => i.k), 'labo'])
 
 // ─── Logout Confirm Modal ─────────────────────────────────────────────────────
 
@@ -104,44 +107,6 @@ function TopBar({ page, profile, onLogout }) {
         <button className="topbar-logout" onClick={onLogout} title="Déconnexion">⏻</button>
       </div>
     </header>
-  )
-}
-
-// ─── PullToRefresh ────────────────────────────────────────────────────────────
-
-function PullToRefresh({ onRefresh, children }) {
-  const [pulling,    setPulling]    = useState(false)
-  const [refreshing, setRefreshing] = useState(false)
-  const startY = useRef(0)
-  const THRESHOLD = 70
-
-  function onTouchStart(e) { startY.current = e.touches[0].clientY }
-  async function onTouchEnd(e) {
-    const delta = e.changedTouches[0].clientY - startY.current
-    if (delta > THRESHOLD && !refreshing) {
-      setRefreshing(true)
-      await onRefresh()
-      setRefreshing(false)
-    }
-    setPulling(false)
-  }
-  function onTouchMove(e) {
-    const delta = e.touches[0].clientY - startY.current
-    setPulling(delta > 20)
-  }
-
-  return (
-    <div className="ptr-wrap" onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}>
-      {(pulling || refreshing) && (
-        <div className="ptr-indicator">
-          <span style={{ display:'inline-block', animation: refreshing ? 'spin .8s linear infinite' : 'none', fontSize:20, color:'#2563EB' }}>✦</span>
-          <span style={{ fontSize:12, color:'#64748B', fontWeight:500 }}>
-            {refreshing ? 'Actualisation…' : 'Relâchez pour actualiser'}
-          </span>
-        </div>
-      )}
-      {children}
-    </div>
   )
 }
 
@@ -299,6 +264,15 @@ export default function App() {
   const alertDlc = stock.filter(i => ['critical', 'expired'].includes(dlcStatus(i.dlc))).length
   const alertCmd = stock.filter(i => isCritique(i)).length
 
+  if (window.location.pathname === '/kiosque') {
+    const ownerId = new URLSearchParams(window.location.search).get('id')
+    return (
+      <Suspense fallback={null}>
+        <Kiosque ownerId={ownerId} />
+      </Suspense>
+    )
+  }
+
   if (loading) {
     return (
       <div className="loading-screen">
@@ -346,6 +320,7 @@ export default function App() {
             <Suspense fallback={<PageSpinner />}>
             {page === 'dashboard' && (
               <Dashboard
+                user={user}
                 stock={stock}
                 scanLog={scanLog}
                 prixHist={prixHist}
@@ -438,6 +413,13 @@ export default function App() {
                 scanLog={scanLog}
                 user={user}
                 profile={profile}
+                fromDashboard={navSource === 'dashboard'}
+                onBack={handleBack}
+              />
+            )}
+            {page === 'labo' && (
+              <Laboratoire
+                user={user}
                 fromDashboard={navSource === 'dashboard'}
                 onBack={handleBack}
               />

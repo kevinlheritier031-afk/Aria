@@ -1,5 +1,5 @@
-import { useState, useMemo } from 'react'
-import { upsertStock, deleteStockItem } from '../lib/supabase'
+import { useState, useEffect, useMemo } from 'react'
+import { upsertStock, deleteStockItem, fetchLabResults } from '../lib/supabase'
 import { CAT_ICON, CAT_COLOR, CAT_BG, UNITES, dlcStatus, dlcDays, dlcColor, uid, fdate } from '../constants'
 
 const CATS    = ['viande','poisson','laitier','epicerie','legumes','boissons','autre']
@@ -36,7 +36,7 @@ function DlcPill({ dlc }) {
 
 // ── Product Card ──────────────────────────────────────────────────────────────
 
-function ProductCard({ item, onEdit, onDelete, mode, onSortie }) {
+function ProductCard({ item, onEdit, onDelete, mode, onSortie, certified }) {
   const cat  = item.cat || 'autre'
   const crit = critique(item)
   const st   = dlcStatus(item.dlc)
@@ -67,6 +67,9 @@ function ProductCard({ item, onEdit, onDelete, mode, onSortie }) {
           <DlcPill dlc={item.dlc} />
           {item.px != null && (
             <span style={S.prixTag}>{Number(item.px).toFixed(2)} €/{item.u}</span>
+          )}
+          {certified && (
+            <span style={{ fontSize:11, color:'#10B981', fontWeight:700, background:'#ECFDF5', padding:'2px 7px', borderRadius:6, border:'1px solid #6EE7B7' }}>✓ Certifié</span>
           )}
         </div>
       </div>
@@ -326,13 +329,24 @@ function Field({ label, children }) {
 // ── Stock Page ────────────────────────────────────────────────────────────────
 
 export default function Stock({ stock = [], setStock, fournisseurs = [], user, fromDashboard = false, onBack }) {
-  const [mode,      setMode]      = useState('liste')
-  const [filter,    setFilter]    = useState('tout')
-  const [search,    setSearch]    = useState('')
-  const [editItem,  setEditItem]  = useState(null)
-  const [sortieItem,setSortieItem] = useState(null)
-  const [confirmId, setConfirmId] = useState(null)
-  const [saving,    setSaving]    = useState(false)
+  const [mode,           setMode]           = useState('liste')
+  const [filter,         setFilter]         = useState('tout')
+  const [search,         setSearch]         = useState('')
+  const [editItem,       setEditItem]       = useState(null)
+  const [sortieItem,     setSortieItem]     = useState(null)
+  const [confirmId,      setConfirmId]      = useState(null)
+  const [saving,         setSaving]         = useState(false)
+  const [certifiedNames, setCertifiedNames] = useState(new Set())
+
+  useEffect(() => {
+    fetchLabResults(user.id).then(({ data }) => {
+      if (data) {
+        setCertifiedNames(new Set(
+          data.filter(r => r.status === 'conforme').map(r => r.product_name?.trim().toLowerCase())
+        ))
+      }
+    })
+  }, [user.id])
 
   const filtered = useMemo(() => {
     let items = [...stock]
@@ -452,6 +466,7 @@ export default function Stock({ stock = [], setStock, fournisseurs = [], user, f
                   onEdit={setEditItem}
                   onDelete={id => setConfirmId(id)}
                   onSortie={setSortieItem}
+                  certified={certifiedNames.has(item.nom?.trim().toLowerCase())}
                 />
               ))}
             </div>

@@ -68,7 +68,7 @@ function AlertRow({ icon, text, color, bg }) {
 
 // ── Dashboard ─────────────────────────────────────────────────────────────────
 
-export default function Dashboard({ stock = [], scanLog = [], prixHist = [], fournisseurs = [], setPage, profile }) {
+export default function Dashboard({ user, stock = [], scanLog = [], prixHist = [], fournisseurs = [], setPage, profile }) {
   const stats = useMemo(() => {
     const byStatus = { ok: 0, warn: 0, critical: 0, expired: 0, unknown: 0 }
     stock.forEach(i => { byStatus[dlcStatus(i.dlc)] = (byStatus[dlcStatus(i.dlc)] || 0) + 1 })
@@ -134,6 +134,16 @@ export default function Dashboard({ stock = [], scanLog = [], prixHist = [], fou
           <div style={S.heroOrb}>✦</div>
         </div>
       </div>
+
+      {/* Mode Kiosque */}
+      <button onClick={() => window.open(`/kiosque?id=${user?.id}`, '_blank')} style={S.kioskBtn}>
+        <span style={{ fontSize:22 }}>🖥️</span>
+        <div style={{ flex:1, textAlign:'left' }}>
+          <div style={{ fontSize:14, fontWeight:700, color:'#1D4ED8' }}>Mode Kiosque</div>
+          <div style={{ fontSize:12, color:'#3B82F6', marginTop:1 }}>Affichage public des allergènes</div>
+        </div>
+        <span style={{ fontSize:14, color:'#2563EB' }}>→</span>
+      </button>
 
       {/* KPIs */}
       <div style={S.kpiGrid}>
@@ -329,4 +339,13 @@ const S = {
   recentTotal: { fontSize: 13, fontWeight: 700, color: '#0F172A', fontFamily: "'DM Mono',monospace" },
 
   empty: { color: '#94A3B8', fontSize: 13, textAlign: 'center', padding: '20px 0' },
+
+  kioskBtn: {
+    display: 'flex', alignItems: 'center', gap: 14,
+    padding: '14px 20px', borderRadius: 14, cursor: 'pointer',
+    border: '1.5px solid #BFDBFE',
+    background: 'linear-gradient(135deg,#EFF6FF,#DBEAFE)',
+    fontFamily: F, width: '100%',
+    boxShadow: '0 2px 8px rgba(37,99,235,.1)',
+  },
 }

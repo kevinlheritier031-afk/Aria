@@ -171,6 +171,16 @@ export async function deleteEquipeMembre(id) {
   return { error }
 }
 
+export async function fetchLabResults(userId) {
+  const { data, error } = await supabase.from("lab_results").select("*").eq("user_id",userId).order("created_at",{ascending:false});
+  return { data: data || [], error };
+}
+
+export async function insertLabResult(result) {
+  const { data, error } = await supabase.from("lab_results").insert(result);
+  return { data, error };
+}
+
 // ── Team PIN session (localStorage) ──────────────────────────────────────────
 
 export function getTeamSession() {
