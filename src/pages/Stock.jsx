@@ -179,8 +179,8 @@ function SortieSheet({ item, onConfirm, onClose }) {
                 onClick={() => setQte(q => String((parseFloat(q)||0) + 1))}>+</button>
             </div>
             {qteNum > item.q && (
-              <div style={{ fontSize:12, color:'#EF4444', marginTop:6 }}>
-                ⚠ Quantité supérieure au stock disponible ({item.q} {item.u})
+              <div style={{ fontSize:13, color:'#DC2626', marginTop:6, padding:'10px 12px', background:'#FEF2F2', borderRadius:10, border:'1px solid #FECACA', fontWeight:500 }}>
+                ⛔ Stock insuffisant. Vous avez seulement <strong>{item.q} {item.u}</strong> disponible{item.q > 1 ? 's' : ''}.
               </div>
             )}
           </div>
@@ -193,9 +193,9 @@ function SortieSheet({ item, onConfirm, onClose }) {
         <div style={S.modalFooter}>
           <button style={S.btnSecondary} onClick={onClose}>Annuler</button>
           <button
-            style={{ ...S.btnPrimary, opacity: (qteNum <= 0) ? .5 : 1 }}
+            style={{ ...S.btnPrimary, opacity: (qteNum <= 0 || qteNum > item.q) ? .5 : 1 }}
             onClick={handleConfirm}
-            disabled={qteNum <= 0}
+            disabled={qteNum <= 0 || qteNum > item.q}
           >
             Confirmer la sortie
           </button>

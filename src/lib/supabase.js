@@ -165,3 +165,22 @@ export async function upsertAriaConversation(conv) {
   const { data, error } = await supabase.from("aria_conversations").upsert(conv,{onConflict:"id"});
   return { data, error };
 }
+
+export async function deleteEquipeMembre(id) {
+  const { error } = await supabase.from('equipe_membres').delete().eq('id', id)
+  return { error }
+}
+
+// ── Team PIN session (localStorage) ──────────────────────────────────────────
+
+export function getTeamSession() {
+  try { return JSON.parse(localStorage.getItem('aria_team_session') || 'null') } catch { return null }
+}
+
+export function setTeamSession(session) {
+  try { localStorage.setItem('aria_team_session', JSON.stringify(session)) } catch {}
+}
+
+export function clearTeamSession() {
+  try { localStorage.removeItem('aria_team_session') } catch {}
+}

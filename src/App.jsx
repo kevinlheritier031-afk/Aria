@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react'
-import { supabase, signOut, getSession, fetchStock, fetchFournisseurs, fetchScans, fetchPrix } from './lib/supabase'
+import { supabase, signOut, getSession, fetchStock, fetchFournisseurs, fetchScans, fetchPrix, getTeamSession, setTeamSession, clearTeamSession } from './lib/supabase'
 import { NAV_ITEMS, ROLES, initials, dlcStatus, isCritique } from './constants'
 
 // Pages — lazy-loaded for code-splitting
@@ -16,6 +16,36 @@ const Business    = lazy(() => import('./pages/Business'))
 const Equipe      = lazy(() => import('./pages/Equipe'))
 
 const KNOWN_PAGES = new Set(NAV_ITEMS.map(i => i.k))
+
+// ─── Logout Confirm Modal ─────────────────────────────────────────────────────
+
+function LogoutModal({ onConfirm, onCancel }) {
+  return (
+    <div style={{ position:'fixed', inset:0, zIndex:999, display:'flex', alignItems:'center', justifyContent:'center', background:'rgba(15,23,42,.55)', backdropFilter:'blur(4px)', padding:20 }}>
+      <div style={{ background:'#fff', borderRadius:20, padding:'28px 24px', maxWidth:340, width:'100%', boxShadow:'0 24px 64px rgba(0,0,0,.18)', fontFamily:"'Plus Jakarta Sans','Inter',sans-serif", textAlign:'center' }}>
+        <div style={{ fontSize:40, marginBottom:12 }}>👋</div>
+        <div style={{ fontSize:17, fontWeight:800, color:'#0F172A', marginBottom:6 }}>Déconnexion</div>
+        <div style={{ fontSize:13.5, color:'#64748B', marginBottom:24, lineHeight:1.5 }}>
+          Êtes-vous sûr de vouloir vous déconnecter ?
+        </div>
+        <div style={{ display:'flex', gap:10 }}>
+          <button
+            onClick={onCancel}
+            style={{ flex:1, padding:'11px', borderRadius:10, border:'1.5px solid #E2E8F0', background:'#F8FAFC', color:'#475569', fontWeight:600, fontSize:14, cursor:'pointer', fontFamily:'inherit' }}
+          >
+            Annuler
+          </button>
+          <button
+            onClick={onConfirm}
+            style={{ flex:1, padding:'11px', borderRadius:10, border:'none', background:'linear-gradient(135deg,#EF4444,#DC2626)', color:'#fff', fontWeight:600, fontSize:14, cursor:'pointer', fontFamily:'inherit', boxShadow:'0 4px 12px rgba(239,68,68,.3)' }}
+          >
+            Déconnexion
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 // ─── Sidebar ──────────────────────────────────────────────────────────────────
 
@@ -103,7 +133,12 @@ function PullToRefresh({ onRefresh, children }) {
   return (
     <div className="ptr-wrap" onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}>
       {(pulling || refreshing) && (
-        <div className="ptr-indicator">{refreshing ? '⟳' : '↓'}</div>
+        <div className="ptr-indicator">
+          <span style={{ display:'inline-block', animation: refreshing ? 'spin .8s linear infinite' : 'none', fontSize:20, color:'#2563EB' }}>✦</span>
+          <span style={{ fontSize:12, color:'#64748B', fontWeight:500 }}>
+            {refreshing ? 'Actualisation…' : 'Relâchez pour actualiser'}
+          </span>
+        </div>
       )}
       {children}
     </div>
@@ -166,15 +201,16 @@ function BottomNav({ page, setPage, alertDlc, alertCmd }) {
 // ─── App Root ─────────────────────────────────────────────────────────────────
 
 export default function App() {
-  const [user,         setUser]         = useState(null)
-  const [profile,      setProfile]      = useState(null)
-  const [loading,      setLoading]      = useState(true)
-  const [page,         setPage]         = useState('dashboard')
-  const [navSource,    setNavSource]    = useState(null)
-  const [stock,        setStock]        = useState([])
-  const [scanLog,      setScanLog]      = useState([])
-  const [prixHist,     setPrixHist]     = useState([])
-  const [fournisseurs, setFournisseurs] = useState([])
+  const [user,           setUser]           = useState(null)
+  const [profile,        setProfile]        = useState(null)
+  const [loading,        setLoading]        = useState(true)
+  const [page,           setPage]           = useState('dashboard')
+  const [navSource,      setNavSource]      = useState(null)
+  const [stock,          setStock]          = useState([])
+  const [scanLog,        setScanLog]        = useState([])
+  const [prixHist,       setPrixHist]       = useState([])
+  const [fournisseurs,   setFournisseurs]   = useState([])
+  const [logoutConfirm,  setLogoutConfirm]  = useState(false)
 
   const loadData = useCallback(async (userId) => {
     const [s, f, sc, p] = await Promise.all([
@@ -195,6 +231,15 @@ export default function App() {
         setUser(session.user)
         setProfile(session.user.user_metadata)
         loadData(session.user.id)
+        setLoading(false)
+        return
+      }
+      // Check team PIN session
+      const ts = getTeamSession()
+      if (ts) {
+        setUser({ id: ts.ownerId, isTeamMember: true, memberId: ts.memberId })
+        setProfile({ name: ts.name, role: ts.role })
+        loadData(ts.ownerId)
       }
       setLoading(false)
     })
@@ -205,12 +250,15 @@ export default function App() {
         setProfile(session.user.user_metadata)
         loadData(session.user.id)
       } else {
-        setUser(null)
-        setProfile(null)
-        setStock([])
-        setScanLog([])
-        setPrixHist([])
-        setFournisseurs([])
+        const ts = getTeamSession()
+        if (!ts) {
+          setUser(null)
+          setProfile(null)
+          setStock([])
+          setScanLog([])
+          setPrixHist([])
+          setFournisseurs([])
+        }
       }
     })
 
@@ -223,10 +271,25 @@ export default function App() {
     loadData(u.id)
   }
 
+  const handleTeamLogin = (session) => {
+    setTeamSession(session)
+    setUser({ id: session.ownerId, isTeamMember: true, memberId: session.memberId })
+    setProfile({ name: session.name, role: session.role })
+    loadData(session.ownerId)
+  }
+
   const handleLogout = async () => {
-    await signOut()
+    clearTeamSession()
+    if (!user?.isTeamMember) {
+      await signOut()
+    }
     setUser(null)
     setProfile(null)
+    setStock([])
+    setScanLog([])
+    setPrixHist([])
+    setFournisseurs([])
+    setLogoutConfirm(false)
   }
 
   const setPageFromDashboard = useCallback((p) => { setPage(p); setNavSource('dashboard') }, [])
@@ -251,13 +314,20 @@ export default function App() {
   if (!user) {
     return (
       <Suspense fallback={null}>
-        <Auth onLogin={handleLogin} />
+        <Auth onLogin={handleLogin} onTeamLogin={handleTeamLogin} />
       </Suspense>
     )
   }
 
   return (
     <div className="shell">
+      {logoutConfirm && (
+        <LogoutModal
+          onConfirm={handleLogout}
+          onCancel={() => setLogoutConfirm(false)}
+        />
+      )}
+
       <Sidebar
         page={page}
         setPage={setPageClear}
@@ -265,11 +335,11 @@ export default function App() {
         alertCmd={alertCmd}
         user={user}
         profile={profile}
-        onLogout={handleLogout}
+        onLogout={() => setLogoutConfirm(true)}
       />
 
       <div className="shell-main">
-        <TopBar page={page} profile={profile} onLogout={handleLogout} />
+        <TopBar page={page} profile={profile} onLogout={() => setLogoutConfirm(true)} />
 
         <PullToRefresh onRefresh={() => loadData(user.id)}>
           <main className="shell-content">

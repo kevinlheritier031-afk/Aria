@@ -1,16 +1,17 @@
 // Permission matrix — keyed by action slug
+// Hierarchy: proprietaire > chef > second > cuisinier = patissier > employe > apprenti = stagiaire
 const MATRIX = {
   delete_stock:     ['proprietaire', 'chef', 'second'],
   edit_stock:       ['proprietaire', 'chef', 'second', 'cuisinier', 'patissier'],
-  read_stock:       ['proprietaire', 'chef', 'second', 'cuisinier', 'patissier', 'employe'],
+  read_stock:       ['proprietaire', 'chef', 'second', 'cuisinier', 'patissier', 'employe', 'apprenti', 'stagiaire'],
   edit_recette:     ['proprietaire', 'chef', 'second', 'cuisinier', 'patissier'],
   delete_recette:   ['proprietaire', 'chef', 'second'],
   passer_commande:  ['proprietaire', 'chef', 'second'],
   voir_marges:      ['proprietaire', 'chef', 'second'],
   gerer_equipe:     ['proprietaire', 'chef'],
-  voir_haccp:       ['proprietaire', 'chef', 'second', 'cuisinier', 'patissier', 'employe'],
-  saisir_temp:      ['proprietaire', 'chef', 'second', 'cuisinier', 'patissier', 'employe'],
-  valider_mep:      ['proprietaire', 'chef', 'second', 'cuisinier', 'patissier', 'employe'],
+  voir_haccp:       ['proprietaire', 'chef', 'second', 'cuisinier', 'patissier', 'employe', 'apprenti', 'stagiaire'],
+  saisir_temp:      ['proprietaire', 'chef', 'second', 'cuisinier', 'patissier', 'employe', 'apprenti', 'stagiaire'],
+  valider_mep:      ['proprietaire', 'chef', 'second', 'cuisinier', 'patissier', 'employe', 'apprenti', 'stagiaire'],
   voir_business:    ['proprietaire', 'chef', 'second'],
   gerer_formation:  ['proprietaire', 'chef'],
 }

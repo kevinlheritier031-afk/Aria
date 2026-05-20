@@ -56,6 +56,8 @@ export const ROLES = {
   cuisinier:    {label:"Cuisinier",          icon:"🧑‍🍳", color:"#3B82F6"},
   patissier:    {label:"Pâtissier",          icon:"🎂",  color:"#EC4899"},
   employe:      {label:"Employé",            icon:"👤",  color:"#94A3B8"},
+  apprenti:     {label:"Apprenti",           icon:"🎓",  color:"#8B5CF6"},
+  stagiaire:    {label:"Stagiaire",          icon:"📋",  color:"#06B6D4"},
 };
 
 export const NAV_ITEMS = [
