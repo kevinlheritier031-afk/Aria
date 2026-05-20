@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { fetchCouverts, insertCouvert, fetchRecettes } from '../lib/supabase'
 import { uid, fdate } from '../constants'
+import BarChart from '../components/shared/BarChart'
 
 const F = "'Plus Jakarta Sans','Inter',sans-serif"
 
@@ -168,6 +169,18 @@ function TabCouverts({ user }) {
   })
   const topDow = Object.entries(byDow).sort((a, b) => b[1] - a[1])[0]
 
+  const last7 = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date()
+    d.setDate(d.getDate() - (6 - i))
+    const dd  = String(d.getDate()).padStart(2, '0')
+    const mm  = String(d.getMonth() + 1).padStart(2, '0')
+    const yy  = d.getFullYear()
+    const key = `${dd}/${mm}/${yy}`
+    const total = couverts.filter(c => c.date === key).reduce((s, c) => s + (c.nb_couverts || 0), 0)
+    const label = d.toLocaleDateString('fr-FR', { weekday:'short' }) + ' ' + d.getDate()
+    return { label, value: total, color: total > 0 ? '#2563EB' : '#CBD5E1' }
+  })
+
   return (
     <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
       {/* KPIs */}
@@ -186,6 +199,12 @@ function TabCouverts({ user }) {
             {topService ? `${SERVICES.find(s => s.k === topService[0])?.l || topService[0]} (${topService[1]})` : 'Aucun'}
           </span>
         </div>
+      </div>
+
+      {/* Derniers 7 jours */}
+      <div style={S.card}>
+        <div style={S.cardTitle}>Derniers 7 jours</div>
+        <BarChart data={last7} unit="couverts" height={12} />
       </div>
 
       {/* Jours les plus chargés */}

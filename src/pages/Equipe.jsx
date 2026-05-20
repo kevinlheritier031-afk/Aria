@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { fetchEquipeMembres, upsertEquipeMembre } from '../lib/supabase'
+import { useState, useEffect, useRef } from 'react'
+import { fetchEquipeMembres, upsertEquipeMembre, deleteEquipeMembre } from '../lib/supabase'
 import { ROLES, uid, initials } from '../constants'
 import { canDo } from '../hooks/usePermissions'
 
@@ -387,17 +387,148 @@ function ModuleView({ mod, onBack, onComplete, alreadyDone }) {
   )
 }
 
+// ── AriaFormationModal ────────────────────────────────────────────────────────
+
+function AriaFormationModal({ membre, onClose, user }) {
+  const [msgs,    setMsgs]    = useState([])
+  const [input,   setInput]   = useState('')
+  const [loading, setLoading] = useState(false)
+  const [started, setStarted] = useState(false)
+  const bottomRef = useRef(null)
+  const roleInfo  = ROLES[membre.role] || ROLES.employe
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior:'smooth' })
+  }, [msgs, loading])
+
+  async function sendMessage(msg) {
+    const history = msgs.map(m => ({ role: m.role, content: m.content }))
+    setMsgs(m => [...m, { role:'user', content: msg }])
+    setInput('')
+    setLoading(true)
+    try {
+      const res  = await fetch('/api/aria', {
+        method: 'POST',
+        headers: { 'Content-Type':'application/json' },
+        body: JSON.stringify({
+          message: msg,
+          history,
+          userId: user?.id,
+          context: { user_role: membre.role, user_name: membre.name },
+        }),
+      })
+      const data = await res.json()
+      setMsgs(m => [...m, { role:'assistant', content: data.reply || '…' }])
+    } catch (e) {
+      setMsgs(m => [...m, { role:'assistant', content: 'Erreur : ' + e.message }])
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleStart() {
+    setStarted(true)
+    await sendMessage(`Je suis ${membre.name}, nouveau(elle) ${roleInfo.label}. Présente-moi les fonctionnalités que j'utiliserai au quotidien dans cette application.`)
+  }
+
+  return (
+    <div style={{ position:'fixed', inset:0, zIndex:1000, background:'rgba(15,23,42,.6)', backdropFilter:'blur(4px)', display:'flex', alignItems:'flex-end', justifyContent:'center' }}>
+      <div style={{ background:'#fff', borderRadius:'20px 20px 0 0', width:'100%', maxWidth:560, height:'82vh', display:'flex', flexDirection:'column' }}>
+        <div style={{ padding:'14px 20px', borderBottom:'1px solid #E2E8F0', display:'flex', alignItems:'center', gap:12, flexShrink:0 }}>
+          <div style={{ width:38, height:38, borderRadius:'50%', background:'linear-gradient(135deg,#2563EB,#7C3AED)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:16, color:'#fff', flexShrink:0 }}>✦</div>
+          <div style={{ flex:1 }}>
+            <div style={{ fontWeight:700, fontSize:13.5, color:'#0F172A' }}>Formation Aria — {membre.name}</div>
+            <div style={{ fontSize:12, color:'#64748B' }}>{roleInfo.icon} {roleInfo.label}</div>
+          </div>
+          <button onClick={onClose} style={{ ...S.btnSm, background:'#F1F5F9', color:'#475569' }}>✕</button>
+        </div>
+
+        <div style={{ flex:1, overflowY:'auto', padding:'16px 20px', display:'flex', flexDirection:'column', gap:12 }}>
+          {!started ? (
+            <div style={{ textAlign:'center', padding:'40px 20px', display:'flex', flexDirection:'column', alignItems:'center', gap:12 }}>
+              <div style={{ fontSize:48 }}>🎓</div>
+              <div style={{ fontSize:15, fontWeight:700, color:'#0F172A' }}>Formation personnalisée</div>
+              <div style={{ fontSize:13, color:'#64748B', lineHeight:1.65, maxWidth:320 }}>
+                Aria va guider <strong>{membre.name}</strong> pas à pas dans la découverte de l'application pour son rôle de <strong>{roleInfo.label}</strong>.
+              </div>
+              <button
+                onClick={handleStart}
+                style={{ ...S.btn, background:'linear-gradient(135deg,#2563EB,#7C3AED)', color:'#fff', boxShadow:'0 4px 16px rgba(37,99,235,.3)', marginTop:8 }}
+              >
+                🚀 Démarrer la formation
+              </button>
+            </div>
+          ) : msgs.map((m, i) => (
+            <div key={i} style={{ display:'flex', flexDirection: m.role === 'user' ? 'row-reverse' : 'row', gap:8, alignItems:'flex-start' }}>
+              {m.role === 'assistant' && (
+                <div style={{ width:28, height:28, borderRadius:'50%', background:'linear-gradient(135deg,#2563EB,#7C3AED)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, color:'#fff', flexShrink:0, marginTop:2 }}>✦</div>
+              )}
+              <div style={{
+                maxWidth:'76%', padding:'10px 14px', fontSize:13.5, lineHeight:1.65, whiteSpace:'pre-wrap',
+                borderRadius: m.role === 'user' ? '16px 4px 16px 16px' : '4px 16px 16px 16px',
+                background: m.role === 'user' ? '#2563EB' : '#F1F5F9',
+                color: m.role === 'user' ? '#fff' : '#0F172A',
+              }}>
+                {m.content}
+              </div>
+            </div>
+          ))}
+          {loading && (
+            <div style={{ display:'flex', gap:8, alignItems:'flex-start' }}>
+              <div style={{ width:28, height:28, borderRadius:'50%', background:'linear-gradient(135deg,#2563EB,#7C3AED)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, color:'#fff', flexShrink:0, marginTop:2 }}>✦</div>
+              <div style={{ padding:'10px 14px', background:'#F1F5F9', borderRadius:'4px 16px 16px 16px', fontSize:13, color:'#64748B' }}>Aria rédige…</div>
+            </div>
+          )}
+          <div ref={bottomRef} />
+        </div>
+
+        {started && (
+          <div style={{ padding:'12px 20px', borderTop:'1px solid #E2E8F0', display:'flex', gap:8, flexShrink:0 }}>
+            <input
+              style={{ ...S.input, flex:1, borderRadius:20, padding:'9px 16px', fontSize:13 }}
+              placeholder="Poser une question…"
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' && input.trim() && !loading) sendMessage(input.trim()) }}
+            />
+            <button
+              onClick={() => { if (input.trim() && !loading) sendMessage(input.trim()) }}
+              disabled={!input.trim() || loading}
+              style={{ ...S.btnSm, background:'#2563EB', color:'#fff', borderRadius:20, paddingLeft:16, paddingRight:16, opacity: !input.trim() || loading ? .5 : 1 }}
+            >
+              →
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ── TabEquipe ──────────────────────────────────────────────────────────────────
 
 function TabEquipe({ user, profile, membres, setMembres, loading }) {
-  const [showInvite, setShowInvite] = useState(false)
-  const [saving,     setSaving]     = useState(false)
-  const [formErr,    setFormErr]    = useState('')
-  const [form,       setForm]       = useState({ name:'', role:'cuisinier', pin_code:'' })
-  const [copied,     setCopied]     = useState(false)
+  const [showInvite,    setShowInvite]    = useState(false)
+  const [saving,        setSaving]        = useState(false)
+  const [formErr,       setFormErr]       = useState('')
+  const [form,          setForm]          = useState({ name:'', role:'cuisinier', pin_code:'' })
+  const [copied,        setCopied]        = useState(false)
+  const [deleteConfirm, setDeleteConfirm] = useState(null)
+  const [pinVisible,    setPinVisible]    = useState({})
+  const [ariaModal,     setAriaModal]     = useState(null)
 
   const canManage = canDo('gerer_equipe', profile?.role)
   const f = (k, v) => setForm(p => ({ ...p, [k]:v }))
+
+  function togglePin(id) {
+    setPinVisible(p => ({ ...p, [id]: !p[id] }))
+  }
+
+  async function handleDelete(id) {
+    setDeleteConfirm(null)
+    await deleteEquipeMembre(id)
+    setMembres(m => m.filter(x => x.id !== id))
+  }
 
   function handleCopyCode() {
     try {
@@ -447,6 +578,7 @@ function TabEquipe({ user, profile, membres, setMembres, loading }) {
   const certifies = membres.filter(m => MODULES_FORMATION.every(mod => m.formation?.[mod.k])).length
 
   return (
+    <>
     <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
       {/* Code établissement (managers only) */}
       {canManage && user?.id && (
@@ -561,7 +693,14 @@ function TabEquipe({ user, profile, membres, setMembres, loading }) {
                   <div style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
                     <span style={{ fontSize:14, fontWeight:700, color:'#0F172A' }}>{m.name}</span>
                     {!m.actif && <span style={{ ...S.badge, background:'#F1F5F9', color:'#94A3B8' }}>inactif</span>}
-                    {m.pin_code && <span style={{ ...S.badge, background:'#EFF6FF', color:'#2563EB' }}>🔐 PIN</span>}
+                    {m.pin_code && (
+                      <button
+                        onClick={() => togglePin(m.id)}
+                        style={{ ...S.badge, background:'#EFF6FF', color:'#2563EB', cursor:'pointer', border:'none', fontFamily:F, gap:4 }}
+                      >
+                        🔐 {pinVisible[m.id] ? m.pin_code : '••••'} <span style={{ fontSize:10 }}>{pinVisible[m.id] ? '🙈' : '👁️'}</span>
+                      </button>
+                    )}
                     {done === MODULES_FORMATION.length && <span style={{ ...S.badge, background:'#ECFDF5', color:'#059669' }}>🎓 Certifié</span>}
                   </div>
                   <div style={{ marginTop:5, display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
@@ -578,12 +717,28 @@ function TabEquipe({ user, profile, membres, setMembres, loading }) {
                     >
                       {ROLE_KEYS.map(r => <option key={r} value={r}>{ROLES[r]?.label || r}</option>)}
                     </select>
-                    <button
-                      onClick={() => handleToggleActif(m.id, m.actif)}
-                      style={{ ...S.btnSm, background: m.actif ? '#ECFDF5' : '#F1F5F9', color: m.actif ? '#059669' : '#94A3B8', minWidth:72 }}
-                    >
-                      {m.actif ? '● Actif' : '○ Inactif'}
-                    </button>
+                    <div style={{ display:'flex', gap:4 }}>
+                      <button
+                        onClick={() => setAriaModal(m)}
+                        title="Formation Aria"
+                        style={{ ...S.btnSm, background:'#EFF6FF', color:'#2563EB', padding:'5px 9px' }}
+                      >
+                        🎓
+                      </button>
+                      <button
+                        onClick={() => handleToggleActif(m.id, m.actif)}
+                        style={{ ...S.btnSm, background: m.actif ? '#ECFDF5' : '#F1F5F9', color: m.actif ? '#059669' : '#94A3B8', minWidth:60 }}
+                      >
+                        {m.actif ? '● Actif' : '○ Inactif'}
+                      </button>
+                      <button
+                        onClick={() => setDeleteConfirm(m.id)}
+                        title="Supprimer ce membre"
+                        style={{ ...S.btnSm, background:'#FEF2F2', color:'#DC2626', padding:'5px 9px' }}
+                      >
+                        🗑️
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
@@ -626,6 +781,29 @@ function TabEquipe({ user, profile, membres, setMembres, loading }) {
         </div>
       </div>
     </div>
+
+    {/* Delete confirmation modal */}
+    {deleteConfirm && (
+      <div style={{ position:'fixed', inset:0, zIndex:1000, background:'rgba(15,23,42,.55)', backdropFilter:'blur(4px)', display:'flex', alignItems:'center', justifyContent:'center', padding:'0 24px' }}>
+        <div style={{ background:'#fff', borderRadius:20, padding:'28px 24px', maxWidth:340, width:'100%', textAlign:'center', boxShadow:'0 20px 60px rgba(0,0,0,.2)' }}>
+          <div style={{ fontSize:40, marginBottom:10 }}>🗑️</div>
+          <div style={{ fontSize:16, fontWeight:800, color:'#0F172A', marginBottom:8 }}>Supprimer ce membre ?</div>
+          <div style={{ fontSize:13, color:'#64748B', marginBottom:24, lineHeight:1.6 }}>
+            Cette action est irréversible. Le membre ne pourra plus se connecter avec son PIN.
+          </div>
+          <div style={{ display:'flex', gap:10 }}>
+            <button onClick={() => setDeleteConfirm(null)} style={{ ...S.btn, flex:1, background:'#F1F5F9', color:'#0F172A' }}>Annuler</button>
+            <button onClick={() => handleDelete(deleteConfirm)} style={{ ...S.btn, flex:1, background:'#DC2626', color:'#fff' }}>Supprimer</button>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {/* Aria formation modal */}
+    {ariaModal && (
+      <AriaFormationModal membre={ariaModal} onClose={() => setAriaModal(null)} user={user} />
+    )}
+    </>
   )
 }
 
