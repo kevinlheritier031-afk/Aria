@@ -225,10 +225,12 @@ export default function Onboarding({ user, onComplete }) {
 
       // ── HACCP ─────────────────────────────────────────────────────────────
       if (stepName === 'haccp' && data.zones?.length) {
+        const etabId = await getEtabId()
+        console.log('[Onboarding] etablissementId used (haccp_zones):', etabId, '| uid:', uid, '| ref:', etablissementIdRef.current)
+        if (!etabId) throw new Error('etablissement_id null avant INSERT haccp_zones')
         for (const z of data.zones) {
           console.log('[Onboarding] → INSERT haccp_zones', z)
-          // RLS: auth.uid() = etablissement_id → must use uid here
-          const { error } = await insertHaccpZone({ nom: z.nom, temp_min: z.temp_min, temp_max: z.temp_max, etablissement_id: uid })
+          const { error } = await insertHaccpZone({ nom: z.nom, temp_min: z.temp_min, temp_max: z.temp_max, etablissement_id: etabId })
           if (error) throw new Error(`haccp_zones: ${error.message}`)
         }
         console.log('[Onboarding] ✅', data.zones.length, 'zone(s) HACCP')
@@ -238,6 +240,8 @@ export default function Onboarding({ user, onComplete }) {
       // ── FOURNISSEURS ──────────────────────────────────────────────────────
       if (stepName === 'fournisseurs' && data.fournisseurs?.length) {
         const etabId = await getEtabId()
+        console.log('[Onboarding] etablissementId used (fournisseurs):', etabId)
+        if (!etabId) throw new Error('etablissement_id null avant INSERT fournisseurs')
         for (const f of data.fournisseurs) {
           console.log('[Onboarding] → INSERT fournisseurs', f, '— etabId:', etabId)
           const { error } = await upsertFournisseur({
@@ -258,6 +262,8 @@ export default function Onboarding({ user, onComplete }) {
       // ── STOCK ─────────────────────────────────────────────────────────────
       if (stepName === 'stock' && !data.skipped && data.produits?.length) {
         const etabId = await getEtabId()
+        console.log('[Onboarding] etablissementId used (stock):', etabId)
+        if (!etabId) throw new Error('etablissement_id null avant INSERT stock')
         const items  = data.produits.map(p => ({
           nom: p.nom, q: Number(p.q) || 0, u: p.u || 'unité', cat: p.cat || 'autre',
           user_id: uid, etablissement_id: etabId,
@@ -272,6 +278,8 @@ export default function Onboarding({ user, onComplete }) {
       // ── RECETTES ──────────────────────────────────────────────────────────
       if (stepName === 'recettes' && !data.skipped && data.recettes?.length) {
         const etabId = await getEtabId()
+        console.log('[Onboarding] etablissementId used (recettes):', etabId)
+        if (!etabId) throw new Error('etablissement_id null avant INSERT recettes')
         for (const r of data.recettes) {
           console.log('[Onboarding] → INSERT recettes', r, '— etabId:', etabId)
           const { error } = await upsertRecette({
