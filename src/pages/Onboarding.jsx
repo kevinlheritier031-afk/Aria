@@ -1,13 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
-import {
-  upsertEtablissement,
-  insertHaccpZone,
-  upsertFournisseur,
-  upsertStock,
-  upsertRecette,
-  upsertEquipeMembre,
-} from '../lib/supabase'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -168,47 +160,36 @@ export default function Onboarding({ user, onComplete }) {
     setMessages(prev => [...prev, { role: 'status', content: msg, isError }])
   }
 
-  // Fetch (or create) the etablissement and return its real UUID
-  async function getEtabId() {
-    if (etablissementIdRef.current) return etablissementIdRef.current
-    const { data } = await supabase
-      .from('etablissements')
-      .select('id')
-      .eq('owner_id', user.id)
-      .single()
-    if (data?.id) {
-      etablissementIdRef.current = data.id
-      console.log('[Onboarding] 📌 etablissement_id récupéré:', data.id)
-    }
-    return etablissementIdRef.current
-  }
-
   // ── Save handler ──────────────────────────────────────────────────────────────
 
   async function executeSave(stepName, data) {
     const uid = user.id
-    console.log(`[Onboarding] 💾 executeSave — step=${stepName}`, data)
+    // EID : UUID réel de la table etablissements, persisté dans le ref entre les étapes
+    let EID = etablissementIdRef.current
+    console.log(`[Onboarding] 💾 executeSave — step=${stepName} | EID=${EID}`, data)
 
     try {
 
-      // ── IDENTITY ──────────────────────────────────────────────────────────
+      // ── IDENTITY + PROFILE ────────────────────────────────────────────────
       if (stepName === 'identity') {
-        console.log('[Onboarding] → UPSERT etablissements', { owner_id: uid, nom: data.nom, type: data.type })
-        const { data: etabData, error: etabErr } = await upsertEtablissement({ owner_id: uid, nom: data.nom, type: data.type || 'restaurant' })
-        if (etabErr) throw new Error(`etablissements: ${etabErr.message}`)
+        const { data: etab, error: etabError } = await supabase
+          .from('etablissements')
+          .upsert(
+            { nom: data.nom, type: data.type || 'restaurant', nb_employes: data.nb_employes || null, owner_id: uid, actif: true, abonnement: 'starter' },
+            { onConflict: 'owner_id' }
+          )
+          .select('id')
+          .single()
+        if (etabError) throw etabError
+        EID = etab.id
+        etablissementIdRef.current = EID
+        console.log('EID etablissement:', EID)
 
-        const etabId = etabData?.[0]?.id
-        if (!etabId) throw new Error('etablissement ID introuvable après upsert')
-        etablissementIdRef.current = etabId
-        console.log('[Onboarding] ✅ Etablissement upsert — id:', etabId)
-
-        // Persist etablissement_id on the profile
-        const { error: profileErr } = await supabase
+        const { error: profileError } = await supabase
           .from('profiles')
-          .update({ etablissement_id: etabId })
-          .eq('id', uid)
-        if (profileErr) console.warn('[Onboarding] ⚠️ profile.etablissement_id update:', profileErr.message)
-        else console.log('[Onboarding] ✅ profiles.etablissement_id =', etabId)
+          .upsert({ id: uid, etablissement_id: EID, role: 'proprietaire', onboarding_completed: false }, { onConflict: 'id' })
+        if (profileError) console.error('[Onboarding] profiles upsert error:', profileError)
+        else console.log('[Onboarding] ✅ profiles.etablissement_id =', EID)
 
         addStatus('✓ Établissement enregistré')
       }
@@ -218,20 +199,23 @@ export default function Onboarding({ user, onComplete }) {
         const roleKey = ROLE_MAP[data.role] || data.role.toLowerCase().replace(/\s+/g, '_')
         console.log('[Onboarding] → UPDATE profiles.role =', roleKey)
         const { error } = await supabase.from('profiles').update({ role: roleKey }).eq('id', uid)
-        if (error) throw new Error(`profiles.role: ${error.message}`)
+        if (error) throw error
         console.log('[Onboarding] ✅ Rôle:', roleKey)
         addStatus('✓ Rôle enregistré')
       }
 
       // ── HACCP ─────────────────────────────────────────────────────────────
       if (stepName === 'haccp' && data.zones?.length) {
-        const etabId = await getEtabId()
-        console.log('[Onboarding] etablissementId used (haccp_zones):', etabId, '| uid:', uid, '| ref:', etablissementIdRef.current)
-        if (!etabId) throw new Error('etablissement_id null avant INSERT haccp_zones')
-        for (const z of data.zones) {
-          console.log('[Onboarding] → INSERT haccp_zones', z)
-          const { error } = await insertHaccpZone({ nom: z.nom, temp_min: z.temp_min, temp_max: z.temp_max, etablissement_id: etabId })
-          if (error) throw new Error(`haccp_zones: ${error.message}`)
+        if (!EID) throw new Error('EID manquant avant INSERT haccp_zones')
+        console.log('[Onboarding] EID used (haccp_zones):', EID)
+        for (const zone of data.zones) {
+          const { error } = await supabase.from('haccp_zones').insert({
+            etablissement_id: EID,
+            nom:      zone.nom,
+            temp_min: zone.temp_min,
+            temp_max: zone.temp_max,
+          })
+          if (error) console.error('haccp_zones error:', error)
         }
         console.log('[Onboarding] ✅', data.zones.length, 'zone(s) HACCP')
         addStatus(`✓ ${data.zones.length} zone(s) HACCP enregistrée(s)`)
@@ -239,21 +223,19 @@ export default function Onboarding({ user, onComplete }) {
 
       // ── FOURNISSEURS ──────────────────────────────────────────────────────
       if (stepName === 'fournisseurs' && data.fournisseurs?.length) {
-        const etabId = await getEtabId()
-        console.log('[Onboarding] etablissementId used (fournisseurs):', etabId)
-        if (!etabId) throw new Error('etablissement_id null avant INSERT fournisseurs')
+        if (!EID) throw new Error('EID manquant avant INSERT fournisseurs')
+        console.log('[Onboarding] EID used (fournisseurs):', EID)
         for (const f of data.fournisseurs) {
-          console.log('[Onboarding] → INSERT fournisseurs', f, '— etabId:', etabId)
-          const { error } = await upsertFournisseur({
+          const { error } = await supabase.from('fournisseurs').insert({
+            etablissement_id: EID,
+            user_id: uid,
             nom:   f.nom,
             mode:  f.mode  || 'tel',
             tel:   f.tel   || null,
             email: f.email || null,
             jours: f.jours || [],
-            user_id:         uid,
-            etablissement_id: etabId,
           })
-          if (error) throw new Error(`fournisseurs (${f.nom}): ${error.message}`)
+          if (error) console.error('fournisseurs error:', error)
         }
         console.log('[Onboarding] ✅', data.fournisseurs.length, 'fournisseur(s)')
         addStatus(`✓ ${data.fournisseurs.length} fournisseur(s) enregistré(s)`)
@@ -261,35 +243,33 @@ export default function Onboarding({ user, onComplete }) {
 
       // ── STOCK ─────────────────────────────────────────────────────────────
       if (stepName === 'stock' && !data.skipped && data.produits?.length) {
-        const etabId = await getEtabId()
-        console.log('[Onboarding] etablissementId used (stock):', etabId)
-        if (!etabId) throw new Error('etablissement_id null avant INSERT stock')
-        const items  = data.produits.map(p => ({
+        if (!EID) throw new Error('EID manquant avant INSERT stock')
+        console.log('[Onboarding] EID used (stock):', EID)
+        const items = data.produits.map(p => ({
           nom: p.nom, q: Number(p.q) || 0, u: p.u || 'unité', cat: p.cat || 'autre',
-          user_id: uid, etablissement_id: etabId,
+          user_id: uid, etablissement_id: EID,
         }))
-        console.log('[Onboarding] → INSERT stock', items, '— etabId:', etabId)
-        const { error } = await upsertStock(items)
-        if (error) throw new Error(`stock: ${error.message}`)
-        console.log('[Onboarding] ✅', items.length, 'produit(s)')
-        addStatus(`✓ ${items.length} produit(s) ajouté(s) au stock`)
+        const { error } = await supabase.from('stock').insert(items)
+        if (error) console.error('stock error:', error)
+        else {
+          console.log('[Onboarding] ✅', items.length, 'produit(s)')
+          addStatus(`✓ ${items.length} produit(s) ajouté(s) au stock`)
+        }
       }
 
       // ── RECETTES ──────────────────────────────────────────────────────────
       if (stepName === 'recettes' && !data.skipped && data.recettes?.length) {
-        const etabId = await getEtabId()
-        console.log('[Onboarding] etablissementId used (recettes):', etabId)
-        if (!etabId) throw new Error('etablissement_id null avant INSERT recettes')
+        if (!EID) throw new Error('EID manquant avant INSERT recettes')
+        console.log('[Onboarding] EID used (recettes):', EID)
         for (const r of data.recettes) {
-          console.log('[Onboarding] → INSERT recettes', r, '— etabId:', etabId)
-          const { error } = await upsertRecette({
+          const { error } = await supabase.from('recettes').insert({
+            etablissement_id: EID,
+            user_id:     uid,
             nom:         r.nom,
             portions:    r.portions    || 1,
             ingredients: r.ingredients || [],
-            user_id:         uid,
-            etablissement_id: etabId,
           })
-          if (error) throw new Error(`recettes (${r.nom}): ${error.message}`)
+          if (error) console.error('recettes error:', error)
         }
         console.log('[Onboarding] ✅', data.recettes.length, 'recette(s)')
         addStatus(`✓ ${data.recettes.length} recette(s) enregistrée(s)`)
@@ -298,14 +278,13 @@ export default function Onboarding({ user, onComplete }) {
       // ── EQUIPE ────────────────────────────────────────────────────────────
       if (stepName === 'equipe' && !data.skipped && data.membres?.length) {
         for (const mem of data.membres) {
-          console.log('[Onboarding] → INSERT equipe_membres', mem)
-          const { error } = await upsertEquipeMembre({
+          const { error } = await supabase.from('equipe_membres').insert({
             name:     mem.name,
             role:     mem.role     || 'employe',
             pin_code: mem.pin_code || '',
             owner_id: uid,
           })
-          if (error) throw new Error(`equipe_membres (${mem.name}): ${error.message}`)
+          if (error) console.error('equipe_membres error:', error)
         }
         console.log('[Onboarding] ✅', data.membres.length, 'membre(s)')
         addStatus(`✓ ${data.membres.length} membre(s) d'équipe enregistré(s)`)
@@ -313,13 +292,12 @@ export default function Onboarding({ user, onComplete }) {
 
       // ── BUSINESS ─────────────────────────────────────────────────────────
       if (stepName === 'business') {
-        console.log('[Onboarding] → UPDATE etablissements.settings', data)
         const { error } = await supabase
           .from('etablissements')
           .update({ settings: { couverts_semaine: data.couverts_semaine, type_cuisine: data.type_cuisine } })
           .eq('owner_id', uid)
-        if (error) throw new Error(`etablissements.settings: ${error.message}`)
-        console.log('[Onboarding] ✅ Business')
+        if (error) throw error
+        console.log('[Onboarding] ✅ Business settings')
         addStatus('✓ Informations business enregistrées')
       }
 
