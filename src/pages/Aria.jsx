@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { ROLES, fdate, ftime, uid, dlcStatus } from '../constants'
-import { fetchAriaConversation, upsertAriaConversation, fetchTemperatures, fetchRecettes, fetchCouverts, insertAriaAnalytic } from '../lib/supabase'
+import { supabase, fetchAriaConversation, upsertAriaConversation, fetchTemperatures, fetchRecettes, fetchCouverts, insertAriaAnalytic } from '../lib/supabase'
 
 const STYLE_ID = 'aria-chat-kf'
 if (typeof document !== 'undefined' && !document.getElementById(STYLE_ID)) {
@@ -262,10 +262,13 @@ export default function Aria({ stock = [], fournisseurs = [], scanLog = [], user
         .slice(-12)
         .map(m => ({ role: m.role, content: m.content }))
 
+      const { data: { session } } = await supabase.auth.getSession()
+      const accessToken = session?.access_token
+
       const res  = await fetch('/api/aria', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ message: msg, history, context: buildContext(), userId: user?.id }),
+        body:    JSON.stringify({ message: msg, history, context: buildContext(), userId: user?.id, accessToken }),
       })
       if (!res.ok) throw new Error(`Erreur ${res.status}`)
 

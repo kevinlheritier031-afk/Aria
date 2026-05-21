@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, lazy, Suspense } from 'react'
 import { supabase, signOut, getSession, fetchStock, fetchFournisseurs, fetchScans, fetchPrix, fetchProfile, getTeamSession, setTeamSession, clearTeamSession } from './lib/supabase'
-import { NAV_ITEMS, ROLES, initials, dlcStatus, isCritique } from './constants'
+import { NAV_ITEMS, NAV_GROUPS, BOTTOM_NAV_ITEMS, ROLES, initials, dlcStatus, isCritique } from './constants'
 import PullToRefresh from './components/PullToRefresh'
 
 // Pages — lazy-loaded for code-splitting
@@ -21,7 +21,7 @@ const Onboarding  = lazy(() => import('./pages/Onboarding'))
 const Parametres  = lazy(() => import('./pages/Parametres'))
 const Etiquettes  = lazy(() => import('./pages/Etiquettes'))
 
-const KNOWN_PAGES = new Set([...NAV_ITEMS.map(i => i.k), 'labo', 'parametres', 'etiquettes'])
+const KNOWN_PAGES = new Set([...NAV_ITEMS.map(i => i.k), 'labo', 'parametres'])
 
 // ─── Logout Confirm Modal ─────────────────────────────────────────────────────
 
@@ -64,35 +64,34 @@ function Sidebar({ page, setPage, alertDlc, alertCmd, user, profile, onLogout })
         <span className="sidebar-logo-text">Aria</span>
       </div>
 
-      <nav className="sidebar-nav">
-        {NAV_ITEMS.map(item => {
-          const badge = item.k === 'stock' ? alertDlc : item.k === 'commandes' ? alertCmd : 0
-          return (
-            <button
-              key={item.k}
-              className={`sidebar-item${page === item.k ? ' active' : ''}`}
-              onClick={() => setPage(item.k)}
-            >
-              <span className="sidebar-item-icon">{item.emoji}</span>
-              <span className="sidebar-item-label">{item.label}</span>
-              {badge > 0 && <span className="badge badge-danger sidebar-badge">{badge}</span>}
-            </button>
-          )
-        })}
+      <nav className="sidebar-nav" style={{ flex: 1, overflowY: 'auto' }}>
+        {NAV_GROUPS.map((group, gi) => (
+          <div key={group.label}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: '#475569', letterSpacing: '.6px', textTransform: 'uppercase', padding: gi === 0 ? '8px 16px 4px' : '14px 16px 4px' }}>
+              {group.label}
+            </div>
+            {group.items.map(item => {
+              const badge = item.k === 'stock' ? alertDlc : item.k === 'commandes' ? alertCmd : 0
+              return (
+                <button
+                  key={item.k}
+                  className={`sidebar-item${page === item.k ? ' active' : ''}`}
+                  onClick={() => setPage(item.k)}
+                >
+                  <span className="sidebar-item-icon">{item.emoji}</span>
+                  <span className="sidebar-item-label">{item.label}</span>
+                  {badge > 0 && <span className="badge badge-danger sidebar-badge">{badge}</span>}
+                </button>
+              )
+            })}
+          </div>
+        ))}
       </nav>
 
       <button
-        className={`sidebar-item${page === 'etiquettes' ? ' active' : ''}`}
-        onClick={() => setPage('etiquettes')}
-        style={{ margin:'0 0 4px' }}
-      >
-        <span className="sidebar-item-icon">🏷️</span>
-        <span className="sidebar-item-label">Étiquettes</span>
-      </button>
-      <button
         className={`sidebar-item${page === 'parametres' ? ' active' : ''}`}
         onClick={() => setPage('parametres')}
-        style={{ margin:'0 0 8px' }}
+        style={{ margin: '0 0 8px', flexShrink: 0 }}
       >
         <span className="sidebar-item-icon">⚙️</span>
         <span className="sidebar-item-label">Paramètres</span>
@@ -114,8 +113,15 @@ function Sidebar({ page, setPage, alertDlc, alertCmd, user, profile, onLogout })
 
 // ─── TopBar ───────────────────────────────────────────────────────────────────
 
+const ALL_NAV = [
+  ...NAV_ITEMS,
+  { k:'etiquettes', label:'Étiquettes DLC', emoji:'🏷️' },
+  { k:'parametres', label:'Paramètres',     emoji:'⚙️' },
+  { k:'labo',       label:'Laboratoire',    emoji:'🔬' },
+]
+
 function TopBar({ page, profile, onLogout }) {
-  const item = NAV_ITEMS.find(n => n.k === page)
+  const item = ALL_NAV.find(n => n.k === page)
   return (
     <header className="topbar">
       <div className="topbar-title">
@@ -163,7 +169,7 @@ function NotFoundPage({ setPage }) {
 function BottomNav({ page, setPage, alertDlc, alertCmd }) {
   return (
     <nav className="bnav">
-      {NAV_ITEMS.map(item => {
+      {BOTTOM_NAV_ITEMS.map(item => {
         const badge = item.k === 'stock' ? alertDlc : item.k === 'commandes' ? alertCmd : 0
         return (
           <button
@@ -179,24 +185,6 @@ function BottomNav({ page, setPage, alertDlc, alertCmd }) {
           </button>
         )
       })}
-      <button
-        className={`bnav-item${page === 'etiquettes' ? ' active' : ''}`}
-        onClick={() => setPage('etiquettes')}
-      >
-        <span className="bnav-icon-pill">
-          <span className="bnav-icon">🏷️</span>
-        </span>
-        <span className="bnav-label">Étiquettes</span>
-      </button>
-      <button
-        className={`bnav-item${page === 'parametres' ? ' active' : ''}`}
-        onClick={() => setPage('parametres')}
-      >
-        <span className="bnav-icon-pill">
-          <span className="bnav-icon">⚙️</span>
-        </span>
-        <span className="bnav-label">Paramètres</span>
-      </button>
     </nav>
   )
 }
@@ -340,7 +328,7 @@ export default function App() {
     )
   }
 
-  if (!user.isTeamMember && profile?.onboarding_completed === false) {
+  if (!user.isTeamMember && profile && !profile.onboarding_completed) {
     return (
       <Suspense fallback={null}>
         <Onboarding
@@ -394,6 +382,7 @@ export default function App() {
                 stock={stock}
                 setStock={setStock}
                 user={user}
+                profile={profile}
                 fromDashboard={navSource === 'dashboard'}
                 onBack={handleBack}
               />

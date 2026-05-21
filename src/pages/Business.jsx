@@ -299,8 +299,7 @@ function TabMenus({ user }) {
   const [loading, setLoading] = useState(true)
   const [editId,  setEditId]  = useState(null)
   const [saving,  setSaving]  = useState(false)
-  const [form,    setForm]    = useState({ nom:'', prix_vente:'', cout_matiere:'' })
-  const [margeCible] = useState(() => { try { return parseFloat(localStorage.getItem('aria_marge_cible') || '70') } catch { return 70 } })
+  const [form,    setForm]    = useState({ nom:'', prix_vente:'' })
 
   useEffect(() => {
     if (!user?.id) { setLoading(false); return }
@@ -311,17 +310,11 @@ function TabMenus({ user }) {
 
   const pf = (k, v) => setForm(p => ({ ...p, [k]: v }))
 
-  function calcMarge(pv, cm) {
-    const p = parseFloat(pv), c = parseFloat(cm) || 0
-    if (!p || p <= 0) return null
-    return ((p - c) / p) * 100
-  }
-
   async function saveMenu() {
     const pv = parseFloat(form.prix_vente)
     if (!form.nom.trim() || !pv || pv <= 0) return
     setSaving(true)
-    const payload = { nom: form.nom.trim(), prix_vente: pv, cout_matiere: parseFloat(form.cout_matiere) || 0 }
+    const payload = { nom: form.nom.trim(), prix_vente: pv }
     if (editId) {
       const { data } = await supabase.from('menus').update(payload).eq('id', editId).select().single()
       if (data) setMenus(p => p.map(m => m.id === editId ? data : m))
@@ -332,7 +325,7 @@ function TabMenus({ user }) {
         .select().single()
       if (data) setMenus(p => [...p, data])
     }
-    setForm({ nom:'', prix_vente:'', cout_matiere:'' })
+    setForm({ nom:'', prix_vente:'' })
     setSaving(false)
   }
 
@@ -348,27 +341,22 @@ function TabMenus({ user }) {
 
   function startEdit(m) {
     setEditId(m.id)
-    setForm({ nom: m.nom, prix_vente: String(m.prix_vente), cout_matiere: String(m.cout_matiere || '') })
+    setForm({ nom: m.nom, prix_vente: String(m.prix_vente) })
   }
 
-  const actifs    = menus.filter(m => m.actif)
-  const avgPrix   = actifs.length ? actifs.reduce((s, m) => s + m.prix_vente, 0) / actifs.length : null
-  const prevMarge = form.prix_vente ? calcMarge(form.prix_vente, form.cout_matiere) : null
+  const actifs  = menus.filter(m => m.actif)
+  const avgPrix = actifs.length ? actifs.reduce((s, m) => s + m.prix_vente, 0) / actifs.length : null
 
   return (
     <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
-      <div style={{ ...S.kpiRow, gridTemplateColumns:'repeat(3,1fr)' }}>
+      <div style={{ ...S.kpiRow, gridTemplateColumns:'repeat(2,1fr)' }}>
         <div style={S.kpi}>
           <span style={{ ...S.kpiNum, color:'#2563EB' }}>{menus.length}</span>
-          <span style={S.kpiLabel}>Menus total</span>
-        </div>
-        <div style={S.kpi}>
-          <span style={{ ...S.kpiNum, color:'#10B981' }}>{actifs.length}</span>
-          <span style={S.kpiLabel}>Actifs</span>
+          <span style={S.kpiLabel}>Menus</span>
         </div>
         <div style={S.kpi}>
           <span style={{ ...S.kpiNum, fontSize:16, color:'#7C3AED' }}>{avgPrix ? `${avgPrix.toFixed(0)} €` : '—'}</span>
-          <span style={S.kpiLabel}>Prix moy.</span>
+          <span style={S.kpiLabel}>Prix moyen TTC</span>
         </div>
       </div>
 
@@ -376,65 +364,46 @@ function TabMenus({ user }) {
         <div style={S.cardTitle}>Carte des menus ({menus.length})</div>
         {loading ? <div style={S.empty}>Chargement…</div>
         : menus.length === 0 ? <div style={S.empty}>Aucun menu. Ajoutez votre premier menu ci-dessous.</div>
-        : menus.map(m => {
-          const mg  = calcMarge(m.prix_vente, m.cout_matiere)
-          const ok  = mg !== null && mg >= margeCible
-          const bad = mg !== null && mg < margeCible - 10
-          return (
-            <div key={m.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'11px 0', borderBottom:'1px solid #F8FAFC', opacity: m.actif ? 1 : .5 }}>
-              <div style={{ flex:1 }}>
-                <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-                  <span style={{ fontSize:13.5, fontWeight:700, color:'#0F172A' }}>{m.nom}</span>
-                  {!m.actif && <span style={{ ...S.badge, background:'#F1F5F9', color:'#94A3B8' }}>Inactif</span>}
-                </div>
-                <div style={{ fontSize:11.5, color:'#94A3B8', marginTop:2 }}>
-                  Prix {m.prix_vente.toFixed(2)} € · Coût {(m.cout_matiere || 0).toFixed(2)} €
-                </div>
-              </div>
+        : menus.map(m => (
+          <div key={m.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'11px 0', borderBottom:'1px solid #F8FAFC', opacity: m.actif ? 1 : .5 }}>
+            <div style={{ flex:1 }}>
               <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-                {mg !== null && (
-                  <span style={{ ...S.badge, fontSize:12, fontWeight:700, padding:'3px 9px', background: bad ? '#FEF2F2' : ok ? '#ECFDF5' : '#FFFBEB', color: bad ? '#DC2626' : ok ? '#059669' : '#D97706' }}>
-                    {mg.toFixed(1)}%
-                  </span>
-                )}
-                <button onClick={() => startEdit(m)} style={{ ...S.btnSm, background:'#F1F5F9', color:'#475569', padding:'5px 9px' }}>✏️</button>
-                <button onClick={() => toggleActif(m)} style={{ ...S.btnSm, fontSize:11, padding:'5px 8px', background: m.actif ? '#FEF3C7' : '#ECFDF5', color: m.actif ? '#92400E' : '#059669' }}>
-                  {m.actif ? 'Désact.' : 'Activer'}
-                </button>
-                <button onClick={() => deleteMenu(m.id)} style={{ ...S.btnSm, background:'#FEF2F2', color:'#DC2626', padding:'5px 9px' }}>🗑️</button>
+                <span style={{ fontSize:13.5, fontWeight:700, color:'#0F172A' }}>{m.nom}</span>
+                {!m.actif && <span style={{ ...S.badge, background:'#F1F5F9', color:'#94A3B8' }}>Inactif</span>}
+              </div>
+              <div style={{ fontSize:12, color:'#94A3B8', marginTop:2, fontFamily:"'DM Mono',monospace" }}>
+                {m.prix_vente.toFixed(2)} € TTC
               </div>
             </div>
-          )
-        })}
+            <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+              <button onClick={() => startEdit(m)} style={{ ...S.btnSm, background:'#F1F5F9', color:'#475569', padding:'5px 9px' }}>✏️</button>
+              <button onClick={() => toggleActif(m)} style={{ ...S.btnSm, fontSize:11, padding:'5px 8px', background: m.actif ? '#FEF3C7' : '#ECFDF5', color: m.actif ? '#92400E' : '#059669' }}>
+                {m.actif ? 'Désact.' : 'Activer'}
+              </button>
+              <button onClick={() => deleteMenu(m.id)} style={{ ...S.btnSm, background:'#FEF2F2', color:'#DC2626', padding:'5px 9px' }}>🗑️</button>
+            </div>
+          </div>
+        ))}
       </div>
 
       <div style={S.card}>
         <div style={S.cardTitle}>{editId ? 'Modifier le menu' : 'Nouveau menu'}</div>
-        <div style={{ display:'grid', gridTemplateColumns:'2fr 1fr 1fr', gap:10, marginBottom:10 }}>
+        <div style={{ display:'grid', gridTemplateColumns:'2fr 1fr', gap:10, marginBottom:10 }}>
           <div>
             <label style={{ fontSize:12, fontWeight:600, color:'#475569', marginBottom:4, display:'block' }}>Nom du menu</label>
             <input style={S.input} value={form.nom} onChange={e => pf('nom', e.target.value)} placeholder="Ex : Menu du marché" onKeyDown={e => e.key === 'Enter' && saveMenu()} />
           </div>
           <div>
-            <label style={{ fontSize:12, fontWeight:600, color:'#475569', marginBottom:4, display:'block' }}>Prix vente (€)</label>
+            <label style={{ fontSize:12, fontWeight:600, color:'#475569', marginBottom:4, display:'block' }}>Prix vente TTC (€)</label>
             <input style={{ ...S.input, fontFamily:"'DM Mono',monospace" }} type="number" step="0.01" min="0" value={form.prix_vente} onChange={e => pf('prix_vente', e.target.value)} placeholder="32.00" />
           </div>
-          <div>
-            <label style={{ fontSize:12, fontWeight:600, color:'#475569', marginBottom:4, display:'block' }}>Coût matière (€)</label>
-            <input style={{ ...S.input, fontFamily:"'DM Mono',monospace" }} type="number" step="0.01" min="0" value={form.cout_matiere} onChange={e => pf('cout_matiere', e.target.value)} placeholder="9.60" />
-          </div>
         </div>
-        {prevMarge !== null && (
-          <div style={{ marginBottom:10, padding:'8px 12px', borderRadius:8, fontSize:13, fontWeight:600, background: prevMarge >= margeCible ? '#ECFDF5' : '#FEF2F2', color: prevMarge >= margeCible ? '#059669' : '#DC2626' }}>
-            Marge estimée : {prevMarge.toFixed(1)}% {prevMarge >= margeCible ? `✅ Conforme (objectif ${margeCible}%)` : `⚠️ Sous objectif ${margeCible}%`}
-          </div>
-        )}
         <div style={{ display:'flex', gap:10 }}>
           <button onClick={saveMenu} disabled={saving || !form.nom.trim() || !form.prix_vente} style={{ ...S.btn, background:'#2563EB', color:'#fff', flex:1, opacity: saving || !form.nom.trim() || !form.prix_vente ? .5 : 1 }}>
             {saving ? 'Enregistrement…' : editId ? '✓ Modifier' : '+ Ajouter ce menu'}
           </button>
           {editId && (
-            <button onClick={() => { setEditId(null); setForm({ nom:'', prix_vente:'', cout_matiere:'' }) }} style={{ ...S.btn, background:'#F1F5F9', color:'#475569' }}>
+            <button onClick={() => { setEditId(null); setForm({ nom:'', prix_vente:'' }) }} style={{ ...S.btn, background:'#F1F5F9', color:'#475569' }}>
               Annuler
             </button>
           )}
@@ -446,55 +415,25 @@ function TabMenus({ user }) {
 
 // ── Onglet Marges ──────────────────────────────────────────────────────────────
 
-function TabMarges({ user }) {
-  const [recettes,     setRecettes]     = useState([])
-  const [loading,      setLoading]      = useState(true)
-  const [margeCible,   setMargeCible_]  = useState(() => { try { return parseFloat(localStorage.getItem('aria_marge_cible') || '70') } catch { return 70 } })
-  const [caParCouvert, setCaParCouvert_]= useState(() => { try { return parseFloat(localStorage.getItem('aria_ca_couvert') || '') || '' } catch { return '' } })
-  const [rapport,      setRapport]      = useState(null)
-  const [generating,   setGenerating]   = useState(false)
+function TabObjectifs({ user }) {
+  const [margeCible,    setMargeCible_]   = useState(() => { try { return parseFloat(localStorage.getItem('aria_marge_cible') || '70') } catch { return 70 } })
+  const [ticketMoyen,   setTicketMoyen_]  = useState(() => { try { return localStorage.getItem('aria_ticket_moyen') || '' } catch { return '' } })
+  const [rapport,       setRapport]       = useState(null)
+  const [generating,    setGenerating]    = useState(false)
 
-  useEffect(() => {
-    if (!user?.id) { setLoading(false); return }
-    fetchRecettes(user.id).then(({ data }) => {
-      if (data) setRecettes(data)
-      setLoading(false)
-    })
-  }, [user])
-
-  function setMargeCible(v) { setMargeCible_(v); localStorage.setItem('aria_marge_cible', v) }
-  function setCaParCouvert(v) { setCaParCouvert_(v); localStorage.setItem('aria_ca_couvert', v) }
-
-  const recettesAvecCout = recettes.filter(r => r.cout_estime > 0 && r.nb_personnes > 0)
-  const totalCout        = recettesAvecCout.reduce((s, r) => s + r.cout_estime, 0)
-  const totalCouverts    = recettesAvecCout.reduce((s, r) => s + r.nb_personnes, 0)
-  const coutMoyen        = totalCouverts > 0 ? totalCout / totalCouverts : null
-
-  const ca = parseFloat(caParCouvert)
-  const margeReelle = (coutMoyen && ca > 0)
-    ? Math.round(((ca - coutMoyen) / ca) * 1000) / 10
-    : null
+  function setMargeCible(v)   { setMargeCible_(v);   localStorage.setItem('aria_marge_cible', v) }
+  function setTicketMoyen(v)  { setTicketMoyen_(v);  localStorage.setItem('aria_ticket_moyen', v) }
 
   async function handleRapport() {
     setGenerating(true)
     setRapport(null)
     try {
-      const lines = [
-        `Génère une analyse de rentabilité et de marges pour ma cuisine.`,
-        `Marge brute cible : ${margeCible}%.`,
-        coutMoyen  ? `Coût matière moyen par couvert (${recettesAvecCout.length} recettes analysées) : ${coutMoyen.toFixed(2)} €.` : 'Aucun coût matière disponible.',
-        ca > 0     ? `CA moyen par couvert : ${ca.toFixed(2)} €.` : 'CA non renseigné.',
-        margeReelle !== null ? `Marge brute calculée : ${margeReelle}%. ${margeReelle < margeCible ? '⚠️ SOUS l\'objectif.' : '✅ Conforme à l\'objectif.'}` : '',
-        `Recettes avec coût renseigné :`,
-        ...recettesAvecCout.slice(0, 8).map(r => `  • ${r.nom} — ${(r.cout_estime / r.nb_personnes).toFixed(2)} €/couvert (${r.nb_personnes} pers.)`),
-        `Donne-moi 3-5 recommandations concrètes pour optimiser mes marges.`,
-      ].filter(Boolean)
-
-      const res  = await fetch('/api/aria', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ message: lines.join(' '), userId: user.id }) })
+      const msg = `Analyse mes objectifs : marge brute cible ${margeCible}%${ticketMoyen ? `, ticket moyen cible ${ticketMoyen} €` : ''}. Donne 3-5 recommandations concrètes pour les atteindre.`
+      const res  = await fetch('/api/aria', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ message: msg, userId: user?.id }) })
       const data = await res.json()
       setRapport(data.reply || 'Analyse non disponible.')
     } catch (e) {
-      setRapport('Erreur lors de la génération : ' + e.message)
+      setRapport('Erreur : ' + e.message)
     } finally {
       setGenerating(false)
     }
@@ -502,10 +441,9 @@ function TabMarges({ user }) {
 
   return (
     <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
-      {/* Paramètres */}
       <div style={S.card}>
-        <div style={S.cardTitle}>Paramètres de marge</div>
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16 }}>
+        <div style={S.cardTitle}>Objectifs de rentabilité</div>
+        <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
           <div>
             <label style={{ fontSize:12, fontWeight:600, color:'#475569', marginBottom:6, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
               <span>Marge brute cible</span>
@@ -522,92 +460,23 @@ function TabMarges({ user }) {
             </div>
           </div>
           <div>
-            <label style={{ fontSize:12, fontWeight:600, color:'#475569', marginBottom:6, display:'block' }}>
-              CA moyen par couvert (€)
-            </label>
+            <label style={{ fontSize:12, fontWeight:600, color:'#475569', marginBottom:6, display:'block' }}>Ticket moyen cible (€)</label>
             <input
               style={{ ...S.input, fontSize:18, fontWeight:700, fontFamily:"'DM Mono',monospace" }}
-              type="number" step="0.01" min="0" placeholder="Ex: 28.00"
-              value={caParCouvert}
-              onChange={e => setCaParCouvert(e.target.value)}
+              type="number" step="0.50" min="0" placeholder="Ex: 28.00"
+              value={ticketMoyen}
+              onChange={e => setTicketMoyen(e.target.value)}
             />
-            <div style={{ fontSize:11, color:'#94A3B8', marginTop:4 }}>Prix de vente moyen HT par couvert</div>
+            <div style={{ fontSize:11, color:'#94A3B8', marginTop:4 }}>Prix de vente moyen par couvert visé</div>
           </div>
         </div>
       </div>
 
-      {/* Indicateur marge */}
-      <MargeGauge reelle={margeReelle} cible={margeCible} />
-
-      {/* KPIs coût */}
-      <div style={{ ...S.kpiRow, gridTemplateColumns:'repeat(3,1fr)' }}>
-        <div style={S.kpi}>
-          <span style={{ ...S.kpiNum, color:'#0F172A', fontSize:18 }}>
-            {coutMoyen ? `${coutMoyen.toFixed(2)} €` : '—'}
-          </span>
-          <span style={S.kpiLabel}>Coût / couvert</span>
-        </div>
-        <div style={S.kpi}>
-          <span style={{ ...S.kpiNum, color:'#0F172A', fontSize:18 }}>
-            {ca > 0 ? `${ca.toFixed(2)} €` : '—'}
-          </span>
-          <span style={S.kpiLabel}>CA / couvert</span>
-        </div>
-        <div style={S.kpi}>
-          <span style={{ ...S.kpiNum, color: margeReelle !== null && margeReelle < margeCible ? '#EF4444' : '#10B981', fontSize:18 }}>
-            {margeReelle !== null ? `${margeReelle.toFixed(1)}%` : '—'}
-          </span>
-          <span style={S.kpiLabel}>Marge réelle</span>
-        </div>
-      </div>
-
-      {/* Recettes avec coût */}
-      <div style={S.card}>
-        <div style={{ ...S.rowBetween, marginBottom:14 }}>
-          <div style={{ ...S.cardTitle, marginBottom:0 }}>
-            Coût matière par recette ({recettesAvecCout.length}/{recettes.length})
-          </div>
-          {loading && <span style={{ fontSize:12, color:'#94A3B8' }}>Chargement…</span>}
-        </div>
-        {recettesAvecCout.length === 0 ? (
-          <div style={S.empty}>
-            {loading ? 'Chargement…' : 'Aucune recette avec coût estimé. Renseignez les coûts dans le module Recettes.'}
-          </div>
-        ) : (
-          recettesAvecCout.map(r => {
-            const coutCouvert = r.cout_estime / r.nb_personnes
-            const margeRec    = ca > 0 ? ((ca - coutCouvert) / ca * 100) : null
-            const ok          = margeRec !== null && margeRec >= margeCible
-            return (
-              <div key={r.id} style={{ display:'flex', alignItems:'center', gap:12, padding:'10px 0', borderBottom:'1px solid #F8FAFC' }}>
-                <div style={{ flex:1 }}>
-                  <div style={{ fontSize:13.5, fontWeight:600, color:'#0F172A' }}>{r.nom}</div>
-                  <div style={{ fontSize:11.5, color:'#94A3B8', marginTop:1 }}>
-                    {r.nb_personnes} pers. · coût total {r.cout_estime.toFixed(2)} €
-                  </div>
-                </div>
-                <div style={{ textAlign:'right' }}>
-                  <div style={{ fontSize:16, fontWeight:800, fontFamily:"'DM Mono',monospace", color:'#0F172A' }}>
-                    {coutCouvert.toFixed(2)} €<span style={{ fontSize:11, color:'#94A3B8', fontWeight:400 }}>/couv.</span>
-                  </div>
-                  {margeRec !== null && (
-                    <span style={{ ...S.badge, background: ok ? '#ECFDF5' : '#FEF2F2', color: ok ? '#059669' : '#DC2626' }}>
-                      {margeRec.toFixed(1)}%
-                    </span>
-                  )}
-                </div>
-              </div>
-            )
-          })
-        )}
-      </div>
-
-      {/* Rapport Aria */}
       <div style={{ ...S.card, border:'1px solid #BFDBFE', background:'#EFF6FF' }}>
         <div style={{ ...S.rowBetween, marginBottom: rapport ? 12 : 0 }}>
           <div>
             <div style={{ fontWeight:700, fontSize:14, color:'#1E40AF' }}>✦ Analyse Aria</div>
-            <div style={{ fontSize:12, color:'#3B82F6', marginTop:2 }}>Recommandations personnalisées pour optimiser vos marges</div>
+            <div style={{ fontSize:12, color:'#3B82F6', marginTop:2 }}>Recommandations pour atteindre vos objectifs</div>
           </div>
           <button
             onClick={handleRapport}
@@ -1008,18 +877,39 @@ function TabCompta() {
   )
 }
 
+// ── Accordion section wrapper ─────────────────────────────────────────────────
+
+function AccSection({ k, emoji, title, open, onToggle, children }) {
+  const isOpen = open === k
+  return (
+    <div style={{ background:'#fff', border:'1px solid #E2E8F0', borderRadius:14, overflow:'hidden' }}>
+      <button
+        onClick={() => onToggle(k)}
+        style={{ width:'100%', display:'flex', alignItems:'center', justifyContent:'space-between', padding:'16px 20px', border:'none', background:'none', cursor:'pointer', fontFamily:F, textAlign:'left' }}
+      >
+        <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+          <span style={{ fontSize:20 }}>{emoji}</span>
+          <span style={{ fontSize:15, fontWeight:700, color:'#0F172A' }}>{title}</span>
+        </div>
+        <span style={{ fontSize:14, color:'#94A3B8', transition:'transform .2s', transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}>▼</span>
+      </button>
+      {isOpen && (
+        <div style={{ padding:'0 20px 20px', borderTop:'1px solid #F1F5F9' }}>
+          <div style={{ paddingTop:16 }}>
+            {children}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Main ───────────────────────────────────────────────────────────────────────
 
 export default function Business({ user, profile, stock, fournisseurs, prixHist, fromDashboard, onBack }) {
-  const [tab, setTab] = useState('couverts')
+  const [open, setOpen] = useState('clotures')
 
-  const TABS = [
-    { k:'couverts', l:'Couverts',  emoji:'🍽️' },
-    { k:'menus',    l:'Menus',     emoji:'🗂️' },
-    { k:'clotures', l:'Clôtures',  emoji:'📊' },
-    { k:'marges',   l:'Marges',    emoji:'📈' },
-    { k:'compta',   l:'Compta',    emoji:'📑' },
-  ]
+  function toggle(k) { setOpen(prev => prev === k ? null : k) }
 
   return (
     <div style={S.page}>
@@ -1036,20 +926,25 @@ export default function Business({ user, profile, stock, fournisseurs, prixHist,
         </div>
       </div>
 
-      <div style={S.tabs}>
-        {TABS.map(t => (
-          <button key={t.k} style={{ ...S.tab, ...(tab === t.k ? S.tabActive : {}), display:'flex', alignItems:'center', justifyContent:'center', gap:5 }} onClick={() => setTab(t.k)}>
-            <span>{t.emoji}</span>
-            <span>{t.l}</span>
-          </button>
-        ))}
-      </div>
+      <AccSection k="menus"      emoji="🗂️" title="Mes Menus"            open={open} onToggle={toggle}>
+        <TabMenus user={user} />
+      </AccSection>
 
-      {tab === 'couverts' && <TabCouverts user={user} />}
-      {tab === 'menus'    && <TabMenus    user={user} />}
-      {tab === 'clotures' && <TabClotures user={user} />}
-      {tab === 'marges'   && <TabMarges   user={user} />}
-      {tab === 'compta'   && <TabCompta />}
+      <AccSection k="clotures"   emoji="📊" title="Clôture de service"   open={open} onToggle={toggle}>
+        <TabClotures user={user} />
+      </AccSection>
+
+      <AccSection k="historique" emoji="📈" title="Historique des services" open={open} onToggle={toggle}>
+        <TabCouverts user={user} />
+      </AccSection>
+
+      <AccSection k="objectifs"  emoji="🎯" title="Objectifs"             open={open} onToggle={toggle}>
+        <TabObjectifs user={user} />
+      </AccSection>
+
+      <AccSection k="compta"     emoji="📑" title="Comptabilité"          open={open} onToggle={toggle}>
+        <TabCompta />
+      </AccSection>
     </div>
   )
 }

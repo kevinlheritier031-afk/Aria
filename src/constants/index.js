@@ -60,17 +60,53 @@ export const ROLES = {
   stagiaire:    {label:"Stagiaire",          icon:"📋",  color:"#06B6D4"},
 };
 
-export const NAV_ITEMS = [
-  {k:"dashboard",   icon:"⊞", label:"Dashboard",    emoji:"📊"},
-  {k:"reception",   icon:"⊡", label:"Réception",     emoji:"📷"},
-  {k:"stock",       icon:"⊟", label:"Stock",         emoji:"📦"},
-  {k:"commandes",   icon:"🛒", label:"Commandes",     emoji:"🛒"},
-  {k:"recettes",    icon:"📖", label:"Recettes",      emoji:"📖"},
-  {k:"mise_en_place",icon:"📋",label:"Mise en place", emoji:"📋"},
-  {k:"haccp",       icon:"✓", label:"HACCP",         emoji:"✅"},
-  {k:"business",    icon:"💼", label:"Business",      emoji:"💼"},
-  {k:"equipe",      icon:"👥", label:"Équipe",        emoji:"👥"},
-  {k:"aria",        icon:"✦", label:"Aria",          emoji:"🤖"},
+export const NAV_GROUPS = [
+  {
+    label: 'Quotidien',
+    items: [
+      { k:'dashboard',  label:'Tableau de bord', emoji:'🏠' },
+      { k:'reception',  label:'Réceptions',      emoji:'📷' },
+      { k:'etiquettes', label:'Étiquettes DLC',  emoji:'🏷️' },
+    ],
+  },
+  {
+    label: 'Cuisine',
+    items: [
+      { k:'mise_en_place', label:'Mise en place', emoji:'📋' },
+      { k:'recettes',      label:'Recettes',      emoji:'📖' },
+      { k:'stock',         label:'Stock',         emoji:'📦' },
+    ],
+  },
+  {
+    label: 'Gestion',
+    items: [
+      { k:'business',  label:'Business',  emoji:'📊' },
+      { k:'commandes', label:'Commandes', emoji:'🛒' },
+      { k:'equipe',    label:'Équipe',    emoji:'👥' },
+    ],
+  },
+  {
+    label: 'IA',
+    items: [
+      { k:'aria', label:'Aria', emoji:'✦' },
+    ],
+  },
+  {
+    label: 'HACCP',
+    items: [
+      { k:'haccp', label:'HACCP', emoji:'✅' },
+    ],
+  },
+];
+
+export const NAV_ITEMS = NAV_GROUPS.flatMap(g => g.items);
+
+export const BOTTOM_NAV_ITEMS = [
+  { k:'dashboard',  label:'Accueil',  emoji:'🏠' },
+  { k:'stock',      label:'Stock',    emoji:'📦' },
+  { k:'aria',       label:'Aria',     emoji:'✦'  },
+  { k:'etiquettes', label:'DLC',      emoji:'🏷️' },
+  { k:'business',   label:'Business', emoji:'📊' },
 ];
 
 export const ALLERGENES = [
