@@ -197,8 +197,9 @@ alter table if exists etablissements
   add column if not exists nb_employes text,
   add column if not exists settings jsonb default '{}';
 
--- onboarding_completed est stocké dans auth.users.raw_user_meta_data (via updateUser).
--- Aucune migration SQL nécessaire — géré côté client.
+-- onboarding_completed stocké dans la table profiles (source de vérité)
+alter table if exists profiles
+  add column if not exists onboarding_completed boolean default false;
 
 -- equipe_membres
 create table if not exists equipe_membres (

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, lazy, Suspense } from 'react'
-import { supabase, signOut, getSession, fetchStock, fetchFournisseurs, fetchScans, fetchPrix, getTeamSession, setTeamSession, clearTeamSession } from './lib/supabase'
+import { supabase, signOut, getSession, fetchStock, fetchFournisseurs, fetchScans, fetchPrix, fetchProfile, getTeamSession, setTeamSession, clearTeamSession } from './lib/supabase'
 import { NAV_ITEMS, ROLES, initials, dlcStatus, isCritique } from './constants'
 import PullToRefresh from './components/PullToRefresh'
 
@@ -192,11 +192,16 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    getSession().then(session => {
+    // DEBUG — à retirer après diagnostic
+    console.log('[Aria] hash au chargement :', window.location.hash)
+
+    getSession().then(async session => {
+      console.log('[Aria] getSession :', session, '| user_metadata :', session?.user?.user_metadata)
       if (session?.user) {
         setUser(session.user)
-        setProfile(session.user.user_metadata)
         loadData(session.user.id)
+        const { data: profileData } = await fetchProfile(session.user.id)
+        setProfile(profileData || session.user.user_metadata)
         setLoading(false)
         return
       }
@@ -210,11 +215,15 @@ export default function App() {
       setLoading(false)
     })
 
+    // detectSessionInUrl:true dans supabase.js traite automatiquement
+    // le hash #access_token présent dans les URLs d'invitation.
+    // onAuthStateChange reçoit l'événement 'SIGNED_IN' quand c'est le cas.
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      console.log('[Aria] onAuthStateChange :', _event, '| session :', session, '| metadata :', session?.user?.user_metadata)
       if (session?.user) {
         setUser(session.user)
-        setProfile(session.user.user_metadata)
         loadData(session.user.id)
+        fetchProfile(session.user.id).then(({ data }) => setProfile(data || session.user.user_metadata))
       } else {
         const ts = getTeamSession()
         if (!ts) {
@@ -233,8 +242,8 @@ export default function App() {
 
   const handleLogin = (u) => {
     setUser(u)
-    setProfile(u.user_metadata)
     loadData(u.id)
+    fetchProfile(u.id).then(({ data }) => setProfile(data || u.user_metadata))
   }
 
   const handleTeamLogin = (session) => {

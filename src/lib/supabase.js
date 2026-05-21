@@ -201,6 +201,16 @@ export async function insertAriaAnalytic(entry) {
   return { data, error };
 }
 
+export async function fetchProfile(userId) {
+  const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).single()
+  return { data, error }
+}
+
+export async function updateProfile(userId, updates) {
+  const { data, error } = await supabase.from('profiles').update(updates).eq('id', userId)
+  return { data, error }
+}
+
 // ── Team PIN session (localStorage) ──────────────────────────────────────────
 
 export function getTeamSession() {
