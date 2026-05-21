@@ -98,13 +98,13 @@ export default async function handler(req, res) {
     const data  = await response.json()
     const raw   = data.content?.[0]?.text ?? ''
 
-    const match = raw.match(/\{[\s\S]*\}/)
-    if (!match) {
+    const clean = raw.replace(/```json|```/g, '').trim()
+    if (!clean) {
       console.error('Pas de JSON dans la réponse:', raw)
       return res.status(502).json({ error: 'Réponse non parseable', raw })
     }
 
-    const parsed = JSON.parse(match[0])
+    const parsed = JSON.parse(clean)
     return res.status(200).json(parsed)
 
   } catch (err) {
