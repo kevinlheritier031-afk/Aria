@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import { supabase } from '../lib/supabase'
 import { fetchCouverts, insertCouvert, fetchRecettes } from '../lib/supabase'
 import { uid, fdate } from '../constants'
 import BarChart from '../components/shared/BarChart'
@@ -60,6 +61,15 @@ function startOfWeek() {
   start.setDate(start.getDate() - (dow === 0 ? 6 : dow - 1))
   start.setHours(0, 0, 0, 0)
   return start
+}
+
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload  = () => resolve(reader.result.split(',')[1])
+    reader.onerror = reject
+    reader.readAsDataURL(file)
+  })
 }
 
 // ── ServiceSelector ────────────────────────────────────────────────────────────
@@ -282,6 +292,158 @@ function TabCouverts({ user }) {
   )
 }
 
+// ── Onglet Menus ──────────────────────────────────────────────────────────────
+
+function TabMenus({ user }) {
+  const [menus,   setMenus]   = useState([])
+  const [loading, setLoading] = useState(true)
+  const [editId,  setEditId]  = useState(null)
+  const [saving,  setSaving]  = useState(false)
+  const [form,    setForm]    = useState({ nom:'', prix_vente:'', cout_matiere:'' })
+  const [margeCible] = useState(() => { try { return parseFloat(localStorage.getItem('aria_marge_cible') || '70') } catch { return 70 } })
+
+  useEffect(() => {
+    if (!user?.id) { setLoading(false); return }
+    supabase.from('menus').select('*').eq('etablissement_id', user.id)
+      .order('created_at', { ascending: true })
+      .then(({ data }) => { if (data) setMenus(data); setLoading(false) })
+  }, [user?.id])
+
+  const pf = (k, v) => setForm(p => ({ ...p, [k]: v }))
+
+  function calcMarge(pv, cm) {
+    const p = parseFloat(pv), c = parseFloat(cm) || 0
+    if (!p || p <= 0) return null
+    return ((p - c) / p) * 100
+  }
+
+  async function saveMenu() {
+    const pv = parseFloat(form.prix_vente)
+    if (!form.nom.trim() || !pv || pv <= 0) return
+    setSaving(true)
+    const payload = { nom: form.nom.trim(), prix_vente: pv, cout_matiere: parseFloat(form.cout_matiere) || 0 }
+    if (editId) {
+      const { data } = await supabase.from('menus').update(payload).eq('id', editId).select().single()
+      if (data) setMenus(p => p.map(m => m.id === editId ? data : m))
+      setEditId(null)
+    } else {
+      const { data } = await supabase.from('menus')
+        .insert({ ...payload, etablissement_id: user.id, actif: true })
+        .select().single()
+      if (data) setMenus(p => [...p, data])
+    }
+    setForm({ nom:'', prix_vente:'', cout_matiere:'' })
+    setSaving(false)
+  }
+
+  async function toggleActif(m) {
+    const { data } = await supabase.from('menus').update({ actif: !m.actif }).eq('id', m.id).select().single()
+    if (data) setMenus(p => p.map(x => x.id === m.id ? data : x))
+  }
+
+  async function deleteMenu(id) {
+    await supabase.from('menus').delete().eq('id', id)
+    setMenus(p => p.filter(m => m.id !== id))
+  }
+
+  function startEdit(m) {
+    setEditId(m.id)
+    setForm({ nom: m.nom, prix_vente: String(m.prix_vente), cout_matiere: String(m.cout_matiere || '') })
+  }
+
+  const actifs    = menus.filter(m => m.actif)
+  const avgPrix   = actifs.length ? actifs.reduce((s, m) => s + m.prix_vente, 0) / actifs.length : null
+  const prevMarge = form.prix_vente ? calcMarge(form.prix_vente, form.cout_matiere) : null
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+      <div style={{ ...S.kpiRow, gridTemplateColumns:'repeat(3,1fr)' }}>
+        <div style={S.kpi}>
+          <span style={{ ...S.kpiNum, color:'#2563EB' }}>{menus.length}</span>
+          <span style={S.kpiLabel}>Menus total</span>
+        </div>
+        <div style={S.kpi}>
+          <span style={{ ...S.kpiNum, color:'#10B981' }}>{actifs.length}</span>
+          <span style={S.kpiLabel}>Actifs</span>
+        </div>
+        <div style={S.kpi}>
+          <span style={{ ...S.kpiNum, fontSize:16, color:'#7C3AED' }}>{avgPrix ? `${avgPrix.toFixed(0)} €` : '—'}</span>
+          <span style={S.kpiLabel}>Prix moy.</span>
+        </div>
+      </div>
+
+      <div style={S.card}>
+        <div style={S.cardTitle}>Carte des menus ({menus.length})</div>
+        {loading ? <div style={S.empty}>Chargement…</div>
+        : menus.length === 0 ? <div style={S.empty}>Aucun menu. Ajoutez votre premier menu ci-dessous.</div>
+        : menus.map(m => {
+          const mg  = calcMarge(m.prix_vente, m.cout_matiere)
+          const ok  = mg !== null && mg >= margeCible
+          const bad = mg !== null && mg < margeCible - 10
+          return (
+            <div key={m.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'11px 0', borderBottom:'1px solid #F8FAFC', opacity: m.actif ? 1 : .5 }}>
+              <div style={{ flex:1 }}>
+                <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                  <span style={{ fontSize:13.5, fontWeight:700, color:'#0F172A' }}>{m.nom}</span>
+                  {!m.actif && <span style={{ ...S.badge, background:'#F1F5F9', color:'#94A3B8' }}>Inactif</span>}
+                </div>
+                <div style={{ fontSize:11.5, color:'#94A3B8', marginTop:2 }}>
+                  Prix {m.prix_vente.toFixed(2)} € · Coût {(m.cout_matiere || 0).toFixed(2)} €
+                </div>
+              </div>
+              <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                {mg !== null && (
+                  <span style={{ ...S.badge, fontSize:12, fontWeight:700, padding:'3px 9px', background: bad ? '#FEF2F2' : ok ? '#ECFDF5' : '#FFFBEB', color: bad ? '#DC2626' : ok ? '#059669' : '#D97706' }}>
+                    {mg.toFixed(1)}%
+                  </span>
+                )}
+                <button onClick={() => startEdit(m)} style={{ ...S.btnSm, background:'#F1F5F9', color:'#475569', padding:'5px 9px' }}>✏️</button>
+                <button onClick={() => toggleActif(m)} style={{ ...S.btnSm, fontSize:11, padding:'5px 8px', background: m.actif ? '#FEF3C7' : '#ECFDF5', color: m.actif ? '#92400E' : '#059669' }}>
+                  {m.actif ? 'Désact.' : 'Activer'}
+                </button>
+                <button onClick={() => deleteMenu(m.id)} style={{ ...S.btnSm, background:'#FEF2F2', color:'#DC2626', padding:'5px 9px' }}>🗑️</button>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      <div style={S.card}>
+        <div style={S.cardTitle}>{editId ? 'Modifier le menu' : 'Nouveau menu'}</div>
+        <div style={{ display:'grid', gridTemplateColumns:'2fr 1fr 1fr', gap:10, marginBottom:10 }}>
+          <div>
+            <label style={{ fontSize:12, fontWeight:600, color:'#475569', marginBottom:4, display:'block' }}>Nom du menu</label>
+            <input style={S.input} value={form.nom} onChange={e => pf('nom', e.target.value)} placeholder="Ex : Menu du marché" onKeyDown={e => e.key === 'Enter' && saveMenu()} />
+          </div>
+          <div>
+            <label style={{ fontSize:12, fontWeight:600, color:'#475569', marginBottom:4, display:'block' }}>Prix vente (€)</label>
+            <input style={{ ...S.input, fontFamily:"'DM Mono',monospace" }} type="number" step="0.01" min="0" value={form.prix_vente} onChange={e => pf('prix_vente', e.target.value)} placeholder="32.00" />
+          </div>
+          <div>
+            <label style={{ fontSize:12, fontWeight:600, color:'#475569', marginBottom:4, display:'block' }}>Coût matière (€)</label>
+            <input style={{ ...S.input, fontFamily:"'DM Mono',monospace" }} type="number" step="0.01" min="0" value={form.cout_matiere} onChange={e => pf('cout_matiere', e.target.value)} placeholder="9.60" />
+          </div>
+        </div>
+        {prevMarge !== null && (
+          <div style={{ marginBottom:10, padding:'8px 12px', borderRadius:8, fontSize:13, fontWeight:600, background: prevMarge >= margeCible ? '#ECFDF5' : '#FEF2F2', color: prevMarge >= margeCible ? '#059669' : '#DC2626' }}>
+            Marge estimée : {prevMarge.toFixed(1)}% {prevMarge >= margeCible ? `✅ Conforme (objectif ${margeCible}%)` : `⚠️ Sous objectif ${margeCible}%`}
+          </div>
+        )}
+        <div style={{ display:'flex', gap:10 }}>
+          <button onClick={saveMenu} disabled={saving || !form.nom.trim() || !form.prix_vente} style={{ ...S.btn, background:'#2563EB', color:'#fff', flex:1, opacity: saving || !form.nom.trim() || !form.prix_vente ? .5 : 1 }}>
+            {saving ? 'Enregistrement…' : editId ? '✓ Modifier' : '+ Ajouter ce menu'}
+          </button>
+          {editId && (
+            <button onClick={() => { setEditId(null); setForm({ nom:'', prix_vente:'', cout_matiere:'' }) }} style={{ ...S.btn, background:'#F1F5F9', color:'#475569' }}>
+              Annuler
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Onglet Marges ──────────────────────────────────────────────────────────────
 
 function TabMarges({ user }) {
@@ -465,6 +627,331 @@ function TabMarges({ user }) {
   )
 }
 
+// ── Onglet Clôtures ───────────────────────────────────────────────────────────
+
+function TabClotures({ user }) {
+  const [menus,      setMenus]      = useState([])
+  const [clotures,   setClotures]   = useState([])
+  const [loading,    setLoading]    = useState(true)
+  const [modal,      setModal]      = useState(false)
+  const [service,    setService]    = useState('midi')
+  const [mode,       setMode]       = useState(null)
+  const [nbCouverts, setNbCouverts] = useState({})
+  const [uploading,  setUploading]  = useState(false)
+  const [fromPhoto,  setFromPhoto]  = useState(false)
+  const [validating, setValidating] = useState(false)
+  const [ariaMsg,    setAriaMsg]    = useState(null)
+  const fileRef = useRef(null)
+
+  const margeCible = (() => { try { return parseFloat(localStorage.getItem('aria_marge_cible') || '70') } catch { return 70 } })()
+
+  useEffect(() => {
+    if (!user?.id) { setLoading(false); return }
+    Promise.all([
+      supabase.from('menus').select('*').eq('etablissement_id', user.id).eq('actif', true),
+      supabase.from('clotures_service').select('*').eq('etablissement_id', user.id).order('date', { ascending: false }).limit(7),
+    ]).then(([m, c]) => {
+      if (m.data) setMenus(m.data)
+      if (c.data) setClotures(c.data)
+      setLoading(false)
+    })
+  }, [user?.id])
+
+  function openModal(svc) {
+    setService(svc)
+    setMode(null)
+    setNbCouverts({})
+    setFromPhoto(false)
+    setAriaMsg(null)
+    setModal(true)
+  }
+
+  function closeModal() {
+    setModal(false)
+    setMode(null)
+    setNbCouverts({})
+    setFromPhoto(false)
+  }
+
+  const detail = menus.map(m => {
+    const nb = parseInt(nbCouverts[m.id]) || 0
+    return { menu: m, nb, ca: nb * m.prix_vente, cout: nb * (m.cout_matiere || 0) }
+  })
+  const caTotal     = detail.reduce((s, d) => s + d.ca, 0)
+  const coutTotal   = detail.reduce((s, d) => s + d.cout, 0)
+  const nbTotal     = detail.reduce((s, d) => s + d.nb, 0)
+  const marge       = caTotal > 0 ? ((caTotal - coutTotal) / caTotal) * 100 : 0
+  const margeOk     = marge >= margeCible
+
+  async function handlePhoto(file) {
+    if (!file) return
+    setUploading(true)
+    try {
+      const b64 = await fileToBase64(file)
+      const res = await fetch('/api/ticket-caisse', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image: b64, menus: menus.map(m => ({ nom: m.nom, prix_vente: m.prix_vente })) }),
+      })
+      const data = await res.json()
+      if (data.menus) {
+        const prefill = {}
+        data.menus.forEach(item => {
+          const found = menus.find(m => m.nom.toLowerCase().includes(item.nom.toLowerCase()) || item.nom.toLowerCase().includes(m.nom.toLowerCase()))
+          if (found && item.nb_couverts > 0) prefill[found.id] = String(item.nb_couverts)
+        })
+        setNbCouverts(prefill)
+        setFromPhoto(true)
+        setMode('manual')
+      }
+    } catch (e) {
+      console.error('photo ticket error:', e)
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  async function validerCloture() {
+    if (nbTotal === 0) return
+    setValidating(true)
+    const today  = new Date().toISOString().slice(0, 10)
+    const ventes = detail.filter(d => d.nb > 0).map(d => ({ nom: d.menu.nom, nb: d.nb, ca: d.ca, cout: d.cout }))
+    const { data } = await supabase.from('clotures_service').insert({
+      etablissement_id: user.id,
+      service,
+      date: today,
+      ventes,
+      ca_reel: caTotal,
+      cout_total: coutTotal,
+      marge_reelle: parseFloat(marge.toFixed(2)),
+      nb_couverts: nbTotal,
+    }).select().single()
+    if (data) setClotures(p => [data, ...p].slice(0, 7))
+    const msg = margeOk
+      ? `✅ Excellente clôture ! Marge ${marge.toFixed(1)}% — au-dessus de votre objectif ${margeCible}%. ${caTotal.toFixed(0)} € CA pour ${nbTotal} couverts.`
+      : `⚠️ Clôture enregistrée. Marge ${marge.toFixed(1)}% sous l'objectif ${margeCible}%. Pensez à revoir le food cost sur les prochains services.`
+    setAriaMsg(msg)
+    setValidating(false)
+    setMode('done')
+  }
+
+  function formatDate(d) {
+    if (!d) return ''
+    const [y, mo, da] = d.split('-')
+    return `${da}/${mo}/${y}`
+  }
+
+  const chartData = [...clotures].reverse().map(c => ({
+    label: formatDate(c.date).slice(0, 5),
+    value: parseFloat(c.marge_reelle) || 0,
+    color: (parseFloat(c.marge_reelle) || 0) >= margeCible ? '#10B981' : '#EF4444',
+  }))
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+      {/* CTA */}
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+        <button onClick={() => openModal('midi')} style={{ ...S.btn, flexDirection:'column', gap:4, padding:'18px 12px', background:'linear-gradient(135deg,#F59E0B,#D97706)', color:'#fff', borderRadius:14, fontSize:15 }}>
+          <span style={{ fontSize:28 }}>☀️</span>
+          <span>Clôture Midi</span>
+        </button>
+        <button onClick={() => openModal('soir')} style={{ ...S.btn, flexDirection:'column', gap:4, padding:'18px 12px', background:'linear-gradient(135deg,#7C3AED,#4C1D95)', color:'#fff', borderRadius:14, fontSize:15 }}>
+          <span style={{ fontSize:28 }}>🌙</span>
+          <span>Clôture Soir</span>
+        </button>
+      </div>
+
+      {/* BarChart 7 dernières */}
+      {clotures.length > 0 && (
+        <div style={S.card}>
+          <div style={S.cardTitle}>Marge réelle — 7 dernières clôtures</div>
+          <BarChart data={chartData} unit="%" height={12} />
+          <div style={{ display:'flex', gap:8, marginTop:8, justifyContent:'center' }}>
+            <span style={{ fontSize:11, color:'#10B981', fontWeight:600 }}>■ ≥ {margeCible}% objectif</span>
+            <span style={{ fontSize:11, color:'#EF4444', fontWeight:600 }}>■ Sous objectif</span>
+          </div>
+        </div>
+      )}
+
+      {/* Historique */}
+      <div style={S.card}>
+        <div style={S.cardTitle}>Historique des clôtures</div>
+        {loading ? <div style={S.empty}>Chargement…</div>
+        : clotures.length === 0 ? <div style={S.empty}>Aucune clôture enregistrée.</div>
+        : (
+          <div style={{ overflowX:'auto' }}>
+            <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12.5 }}>
+              <thead>
+                <tr style={{ color:'#94A3B8', fontWeight:600 }}>
+                  {['Date','Service','Couverts','CA','Marge réelle','vs Objectif'].map(h => (
+                    <th key={h} style={{ textAlign:'left', padding:'6px 8px', borderBottom:'1px solid #E2E8F0', whiteSpace:'nowrap' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {clotures.map(c => {
+                  const mg  = parseFloat(c.marge_reelle) || 0
+                  const ok  = mg >= margeCible
+                  const svc = SERVICES.find(s => s.k === c.service) || { icon:'🍽️', l: c.service }
+                  return (
+                    <tr key={c.id} style={{ borderBottom:'1px solid #F8FAFC' }}>
+                      <td style={{ padding:'8px 8px', color:'#0F172A', fontWeight:500 }}>{formatDate(c.date)}</td>
+                      <td style={{ padding:'8px 8px' }}>{svc.icon} {svc.l}</td>
+                      <td style={{ padding:'8px 8px', fontFamily:"'DM Mono',monospace", fontWeight:700 }}>{c.nb_couverts}</td>
+                      <td style={{ padding:'8px 8px', fontFamily:"'DM Mono',monospace" }}>{(c.ca_reel || 0).toFixed(0)} €</td>
+                      <td style={{ padding:'8px 8px' }}>
+                        <span style={{ ...S.badge, background: ok ? '#ECFDF5' : '#FEF2F2', color: ok ? '#059669' : '#DC2626', fontSize:12, fontWeight:700 }}>
+                          {mg.toFixed(1)}%
+                        </span>
+                      </td>
+                      <td style={{ padding:'8px 8px', color: ok ? '#059669' : '#DC2626', fontWeight:600, fontSize:12 }}>
+                        {ok ? `+${(mg - margeCible).toFixed(1)}%` : `−${(margeCible - mg).toFixed(1)}%`}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Modal */}
+      {modal && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.45)', zIndex:1000, display:'flex', alignItems:'flex-end', justifyContent:'center' }} onClick={e => { if (e.target === e.currentTarget) closeModal() }}>
+          <div style={{ background:'#fff', borderRadius:'20px 20px 0 0', padding:24, width:'100%', maxWidth:560, maxHeight:'88vh', overflowY:'auto', boxSizing:'border-box' }}>
+
+            {/* Header */}
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:20 }}>
+              <div style={{ fontWeight:800, fontSize:17, color:'#0F172A' }}>
+                {service === 'midi' ? '☀️ Clôture Midi' : '🌙 Clôture Soir'}
+              </div>
+              <button onClick={closeModal} style={{ background:'#F1F5F9', border:'none', borderRadius:99, width:32, height:32, cursor:'pointer', fontSize:16, color:'#64748B' }}>✕</button>
+            </div>
+
+            {/* Mode done */}
+            {mode === 'done' && ariaMsg && (
+              <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+                <div style={{ padding:16, background: margeOk ? '#ECFDF5' : '#FEF2F2', border:`1px solid ${margeOk ? '#A7F3D0' : '#FECACA'}`, borderRadius:12, fontSize:13.5, color: margeOk ? '#065F46' : '#991B1B', lineHeight:1.6 }}>
+                  {ariaMsg}
+                </div>
+                <button onClick={closeModal} style={{ ...S.btn, background:'#0F172A', color:'#fff', width:'100%' }}>Fermer</button>
+              </div>
+            )}
+
+            {/* Mode selection */}
+            {!mode && (
+              <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+                <p style={{ fontSize:13.5, color:'#64748B', margin:0 }}>Comment souhaitez-vous saisir les ventes ?</p>
+                <button onClick={() => setMode('manual')} style={{ ...S.btn, border:'1.5px solid #E2E8F0', background:'#F8FAFC', color:'#0F172A', fontSize:15, justifyContent:'flex-start', gap:12, padding:'14px 16px' }}>
+                  <span style={{ fontSize:22 }}>✏️</span>
+                  <div style={{ textAlign:'left' }}>
+                    <div style={{ fontWeight:700 }}>Saisie manuelle</div>
+                    <div style={{ fontSize:12, color:'#94A3B8', marginTop:2 }}>Entrez les couverts par menu</div>
+                  </div>
+                </button>
+                <button onClick={() => setMode('photo')} style={{ ...S.btn, border:'1.5px solid #E2E8F0', background:'#F8FAFC', color:'#0F172A', fontSize:15, justifyContent:'flex-start', gap:12, padding:'14px 16px' }}>
+                  <span style={{ fontSize:22 }}>📷</span>
+                  <div style={{ textAlign:'left' }}>
+                    <div style={{ fontWeight:700 }}>Photo ticket caisse</div>
+                    <div style={{ fontSize:12, color:'#94A3B8', marginTop:2 }}>L'IA lit et pré-remplit le formulaire</div>
+                  </div>
+                </button>
+              </div>
+            )}
+
+            {/* Mode photo */}
+            {mode === 'photo' && (
+              <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+                <input ref={fileRef} type="file" accept="image/*" style={{ display:'none' }} onChange={e => handlePhoto(e.target.files?.[0])} />
+                <div
+                  onClick={() => fileRef.current?.click()}
+                  style={{ border:'2px dashed #CBD5E1', borderRadius:12, padding:'40px 24px', textAlign:'center', cursor:'pointer', background:'#F8FAFC' }}
+                >
+                  {uploading ? (
+                    <div style={{ color:'#2563EB', fontSize:14, fontWeight:600 }}>⟳ Analyse en cours…</div>
+                  ) : (
+                    <>
+                      <div style={{ fontSize:40, marginBottom:8 }}>📷</div>
+                      <div style={{ fontSize:14, fontWeight:600, color:'#0F172A' }}>Appuyez pour prendre une photo</div>
+                      <div style={{ fontSize:12, color:'#94A3B8', marginTop:4 }}>ou sélectionnez depuis la galerie</div>
+                    </>
+                  )}
+                </div>
+                <button onClick={() => setMode(null)} style={{ ...S.btnSm, background:'#F1F5F9', color:'#64748B', alignSelf:'flex-start' }}>← Retour</button>
+              </div>
+            )}
+
+            {/* Mode manual (ou post-photo) */}
+            {mode === 'manual' && (
+              <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+                {fromPhoto && (
+                  <div style={{ padding:'8px 12px', background:'#EFF6FF', border:'1px solid #BFDBFE', borderRadius:8, fontSize:12.5, color:'#1D4ED8' }}>
+                    ✦ Aria a pré-rempli les couverts depuis votre photo. Vérifiez et ajustez si besoin.
+                  </div>
+                )}
+                {menus.length === 0 && (
+                  <div style={S.empty}>Aucun menu actif. Créez des menus dans l'onglet Menus.</div>
+                )}
+                {menus.map(m => (
+                  <div key={m.id} style={{ display:'flex', alignItems:'center', gap:12 }}>
+                    <div style={{ flex:1 }}>
+                      <div style={{ fontSize:13.5, fontWeight:600, color:'#0F172A' }}>{m.nom}</div>
+                      <div style={{ fontSize:11.5, color:'#94A3B8' }}>{m.prix_vente.toFixed(2)} € · coût {(m.cout_matiere || 0).toFixed(2)} €</div>
+                    </div>
+                    <input
+                      type="number" min="0" placeholder="0"
+                      value={nbCouverts[m.id] || ''}
+                      onChange={e => setNbCouverts(p => ({ ...p, [m.id]: e.target.value }))}
+                      style={{ ...S.input, width:72, textAlign:'center', fontSize:18, fontWeight:800, fontFamily:"'DM Mono',monospace" }}
+                    />
+                  </div>
+                ))}
+
+                {/* Live calc */}
+                {nbTotal > 0 && (
+                  <div style={{ padding:14, background:'#F8FAFC', border:'1px solid #E2E8F0', borderRadius:12, display:'flex', flexDirection:'column', gap:6 }}>
+                    <div style={{ display:'flex', justifyContent:'space-between', fontSize:13 }}>
+                      <span style={{ color:'#64748B' }}>Couverts</span>
+                      <span style={{ fontWeight:700, fontFamily:"'DM Mono',monospace" }}>{nbTotal}</span>
+                    </div>
+                    <div style={{ display:'flex', justifyContent:'space-between', fontSize:13 }}>
+                      <span style={{ color:'#64748B' }}>CA total</span>
+                      <span style={{ fontWeight:700, fontFamily:"'DM Mono',monospace" }}>{caTotal.toFixed(2)} €</span>
+                    </div>
+                    <div style={{ display:'flex', justifyContent:'space-between', fontSize:13 }}>
+                      <span style={{ color:'#64748B' }}>Coût matière</span>
+                      <span style={{ fontWeight:700, fontFamily:"'DM Mono',monospace", color:'#EF4444' }}>{coutTotal.toFixed(2)} €</span>
+                    </div>
+                    <div style={S.divider} />
+                    <div style={{ display:'flex', justifyContent:'space-between', fontSize:14 }}>
+                      <span style={{ fontWeight:700 }}>Marge brute</span>
+                      <span style={{ fontWeight:800, fontFamily:"'DM Mono',monospace", color: margeOk ? '#059669' : '#DC2626' }}>
+                        {marge.toFixed(1)}% {margeOk ? '✅' : '⚠️'}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                <div style={{ display:'flex', gap:10 }}>
+                  {!fromPhoto && <button onClick={() => setMode(null)} style={{ ...S.btn, background:'#F1F5F9', color:'#64748B' }}>← Retour</button>}
+                  <button
+                    onClick={validerCloture}
+                    disabled={validating || nbTotal === 0}
+                    style={{ ...S.btn, background: nbTotal > 0 ? '#2563EB' : '#CBD5E1', color:'#fff', flex:1, opacity: validating ? .7 : 1 }}
+                  >
+                    {validating ? 'Enregistrement…' : `✓ Valider la clôture (${nbTotal} couverts)`}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Onglet Comptabilité ────────────────────────────────────────────────────────
 
 function TabCompta() {
@@ -527,9 +1014,11 @@ export default function Business({ user, profile, stock, fournisseurs, prixHist,
   const [tab, setTab] = useState('couverts')
 
   const TABS = [
-    { k:'couverts', l:'Couverts',      emoji:'🍽️' },
-    { k:'marges',   l:'Marges',        emoji:'📈' },
-    { k:'compta',   l:'Comptabilité',  emoji:'📑' },
+    { k:'couverts', l:'Couverts',  emoji:'🍽️' },
+    { k:'menus',    l:'Menus',     emoji:'🗂️' },
+    { k:'clotures', l:'Clôtures',  emoji:'📊' },
+    { k:'marges',   l:'Marges',    emoji:'📈' },
+    { k:'compta',   l:'Compta',    emoji:'📑' },
   ]
 
   return (
@@ -557,6 +1046,8 @@ export default function Business({ user, profile, stock, fournisseurs, prixHist,
       </div>
 
       {tab === 'couverts' && <TabCouverts user={user} />}
+      {tab === 'menus'    && <TabMenus    user={user} />}
+      {tab === 'clotures' && <TabClotures user={user} />}
       {tab === 'marges'   && <TabMarges   user={user} />}
       {tab === 'compta'   && <TabCompta />}
     </div>

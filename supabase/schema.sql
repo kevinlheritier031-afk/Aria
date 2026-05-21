@@ -257,3 +257,34 @@ create table if not exists lab_results (
 alter table lab_results enable row level security;
 create policy if not exists "Lab results owner" on lab_results
   for all using (auth.uid() = user_id);
+
+-- ── Menus & Clôtures service ──────────────────────────────────────────────────
+
+create table if not exists menus (
+  id               uuid default gen_random_uuid() primary key,
+  etablissement_id uuid not null,
+  nom              text not null,
+  prix_vente       numeric(10,2) not null,
+  cout_matiere     numeric(10,2) default 0,
+  actif            boolean default true,
+  created_at       timestamptz default now()
+);
+alter table menus enable row level security;
+create policy if not exists "Menus owner" on menus
+  for all using (auth.uid() = etablissement_id);
+
+create table if not exists clotures_service (
+  id               uuid default gen_random_uuid() primary key,
+  etablissement_id uuid not null,
+  service          text not null,
+  date             date not null,
+  ventes           jsonb not null,
+  ca_reel          numeric(10,2),
+  cout_total       numeric(10,2),
+  marge_reelle     numeric(5,2),
+  nb_couverts      integer,
+  created_at       timestamptz default now()
+);
+alter table clotures_service enable row level security;
+create policy if not exists "Clotures owner" on clotures_service
+  for all using (auth.uid() = etablissement_id);
