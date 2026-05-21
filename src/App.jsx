@@ -23,6 +23,14 @@ const Etiquettes  = lazy(() => import('./pages/Etiquettes'))
 
 const KNOWN_PAGES = new Set([...NAV_ITEMS.map(i => i.k), 'labo', 'parametres'])
 
+// Merge profile row with auth metadata — prefer metadata name over trigger default 'Utilisateur'
+function resolveProfile(data, meta) {
+  if (!data) return meta || null
+  const metaName = meta?.name || meta?.full_name || meta?.display_name
+  const name = (data.name && data.name !== 'Utilisateur') ? data.name : (metaName || data.name)
+  return { ...data, name }
+}
+
 // ─── Logout Confirm Modal ─────────────────────────────────────────────────────
 
 function LogoutModal({ onConfirm, onCancel }) {
@@ -226,7 +234,7 @@ export default function App() {
         setUser(session.user)
         loadData(session.user.id)
         const { data: profileData } = await fetchProfile(session.user.id)
-        setProfile(profileData || session.user.user_metadata)
+        setProfile(resolveProfile(profileData, session.user.user_metadata))
         setLoading(false)
         return
       }
@@ -248,7 +256,7 @@ export default function App() {
       if (session?.user) {
         setUser(session.user)
         loadData(session.user.id)
-        fetchProfile(session.user.id).then(({ data }) => setProfile(data || session.user.user_metadata))
+        fetchProfile(session.user.id).then(({ data }) => setProfile(resolveProfile(data, session.user.user_metadata)))
       } else {
         const ts = getTeamSession()
         if (!ts) {
@@ -268,7 +276,7 @@ export default function App() {
   const handleLogin = (u) => {
     setUser(u)
     loadData(u.id)
-    fetchProfile(u.id).then(({ data }) => setProfile(data || u.user_metadata))
+    fetchProfile(u.id).then(({ data }) => setProfile(resolveProfile(data, u.user_metadata)))
   }
 
   const handleTeamLogin = (session) => {

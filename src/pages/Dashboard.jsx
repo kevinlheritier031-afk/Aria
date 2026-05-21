@@ -101,7 +101,8 @@ export default function Dashboard({ user, stock = [], scanLog = [], prixHist = [
 
   const recent = [...scanLog].slice(0, 5)
 
-  const firstName = profile?.name?.split(' ')[0] || 'Chef'
+  const rawName   = profile?.name && profile.name !== 'Utilisateur' ? profile.name : null
+  const firstName = rawName?.split(' ')[0] || 'Chef'
   const hour = new Date().getHours()
   const greeting = hour < 12 ? 'Bonjour' : hour < 18 ? 'Bon après-midi' : 'Bonsoir'
 
