@@ -18,8 +18,9 @@ const Equipe      = lazy(() => import('./pages/Equipe'))
 const Kiosque     = lazy(() => import('./pages/Kiosque'))
 const Laboratoire = lazy(() => import('./pages/Laboratoire'))
 const Onboarding  = lazy(() => import('./pages/Onboarding'))
+const Parametres  = lazy(() => import('./pages/Parametres'))
 
-const KNOWN_PAGES = new Set([...NAV_ITEMS.map(i => i.k), 'labo'])
+const KNOWN_PAGES = new Set([...NAV_ITEMS.map(i => i.k), 'labo', 'parametres'])
 
 // ─── Logout Confirm Modal ─────────────────────────────────────────────────────
 
@@ -78,6 +79,15 @@ function Sidebar({ page, setPage, alertDlc, alertCmd, user, profile, onLogout })
           )
         })}
       </nav>
+
+      <button
+        className={`sidebar-item${page === 'parametres' ? ' active' : ''}`}
+        onClick={() => setPage('parametres')}
+        style={{ margin:'0 0 8px' }}
+      >
+        <span className="sidebar-item-icon">⚙️</span>
+        <span className="sidebar-item-label">Paramètres</span>
+      </button>
 
       <div className="sidebar-footer">
         <div className="sidebar-user">
@@ -160,6 +170,15 @@ function BottomNav({ page, setPage, alertDlc, alertCmd }) {
           </button>
         )
       })}
+      <button
+        className={`bnav-item${page === 'parametres' ? ' active' : ''}`}
+        onClick={() => setPage('parametres')}
+      >
+        <span className="bnav-icon-pill">
+          <span className="bnav-icon">⚙️</span>
+        </span>
+        <span className="bnav-label">Paramètres</span>
+      </button>
     </nav>
   )
 }
@@ -441,6 +460,16 @@ export default function App() {
             {page === 'labo' && (
               <Laboratoire
                 user={user}
+                fromDashboard={navSource === 'dashboard'}
+                onBack={handleBack}
+              />
+            )}
+            {page === 'parametres' && (
+              <Parametres
+                user={user}
+                profile={profile}
+                setProfile={setProfile}
+                onLogout={() => setLogoutConfirm(true)}
                 fromDashboard={navSource === 'dashboard'}
                 onBack={handleBack}
               />
