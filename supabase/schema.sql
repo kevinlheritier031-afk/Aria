@@ -288,3 +288,26 @@ create table if not exists clotures_service (
 alter table clotures_service enable row level security;
 create policy if not exists "Clotures owner" on clotures_service
   for all using (auth.uid() = etablissement_id);
+
+-- ── Étiquettes DLC/DDM ────────────────────────────────────────────────────────
+
+create table if not exists etiquettes (
+  id                  uuid default gen_random_uuid() primary key,
+  etablissement_id    uuid references etablissements(id),
+  created_by          uuid references profiles(id),
+  created_by_name     text not null,
+  produit             text not null,
+  type                text not null,
+  date_fabrication    timestamptz not null,
+  dlc_calculee        timestamptz not null,
+  ddm_calculee        timestamptz,
+  base_calcul         text not null,
+  resultats_labo      jsonb,
+  statut_impression   text default 'en_attente',
+  imprimee_at         timestamptz,
+  nb_impressions      integer default 0,
+  created_at          timestamptz default now()
+);
+alter table etiquettes enable row level security;
+create policy if not exists "Etiquettes owner" on etiquettes
+  for all using (auth.uid() = etablissement_id);

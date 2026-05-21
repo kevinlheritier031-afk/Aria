@@ -19,8 +19,9 @@ const Kiosque     = lazy(() => import('./pages/Kiosque'))
 const Laboratoire = lazy(() => import('./pages/Laboratoire'))
 const Onboarding  = lazy(() => import('./pages/Onboarding'))
 const Parametres  = lazy(() => import('./pages/Parametres'))
+const Etiquettes  = lazy(() => import('./pages/Etiquettes'))
 
-const KNOWN_PAGES = new Set([...NAV_ITEMS.map(i => i.k), 'labo', 'parametres'])
+const KNOWN_PAGES = new Set([...NAV_ITEMS.map(i => i.k), 'labo', 'parametres', 'etiquettes'])
 
 // ─── Logout Confirm Modal ─────────────────────────────────────────────────────
 
@@ -80,6 +81,14 @@ function Sidebar({ page, setPage, alertDlc, alertCmd, user, profile, onLogout })
         })}
       </nav>
 
+      <button
+        className={`sidebar-item${page === 'etiquettes' ? ' active' : ''}`}
+        onClick={() => setPage('etiquettes')}
+        style={{ margin:'0 0 4px' }}
+      >
+        <span className="sidebar-item-icon">🏷️</span>
+        <span className="sidebar-item-label">Étiquettes</span>
+      </button>
       <button
         className={`sidebar-item${page === 'parametres' ? ' active' : ''}`}
         onClick={() => setPage('parametres')}
@@ -170,6 +179,15 @@ function BottomNav({ page, setPage, alertDlc, alertCmd }) {
           </button>
         )
       })}
+      <button
+        className={`bnav-item${page === 'etiquettes' ? ' active' : ''}`}
+        onClick={() => setPage('etiquettes')}
+      >
+        <span className="bnav-icon-pill">
+          <span className="bnav-icon">🏷️</span>
+        </span>
+        <span className="bnav-label">Étiquettes</span>
+      </button>
       <button
         className={`bnav-item${page === 'parametres' ? ' active' : ''}`}
         onClick={() => setPage('parametres')}
@@ -470,6 +488,15 @@ export default function App() {
                 profile={profile}
                 setProfile={setProfile}
                 onLogout={() => setLogoutConfirm(true)}
+                fromDashboard={navSource === 'dashboard'}
+                onBack={handleBack}
+              />
+            )}
+            {page === 'etiquettes' && (
+              <Etiquettes
+                user={user}
+                profile={profile}
+                stock={stock}
                 fromDashboard={navSource === 'dashboard'}
                 onBack={handleBack}
               />

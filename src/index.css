@@ -874,3 +874,23 @@ tbody tr:hover td { background: var(--bg); }
 .flex-1 { flex: 1; }
 .truncate { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .divider { height: 1px; background: var(--border); width: 100%; }
+
+/* ── Print — Étiquettes Brother 62×29mm ─────────────── */
+
+@media print {
+  body * { visibility: hidden; }
+  .etiquette-print, .etiquette-print * { visibility: visible; }
+  .etiquette-print {
+    position: fixed;
+    top: 0; left: 0;
+    width: 62mm;
+    height: 29mm;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 8pt;
+    padding: 2mm;
+    border: none;
+    background: white;
+    box-sizing: border-box;
+    overflow: hidden;
+  }
+}
