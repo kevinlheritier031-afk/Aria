@@ -14,14 +14,14 @@ import {
 const STEPS = ['identity','role','haccp','fournisseurs','stock','recettes','equipe','business']
 
 const STEP_LABELS = {
-  identity:    '🏠 Établissement',
-  role:        '👤 Votre rôle',
-  haccp:       '🌡️ Zones HACCP',
-  fournisseurs:'🚚 Fournisseurs',
-  stock:       '📦 Stock initial',
-  recettes:    '📋 Recettes',
-  equipe:      '👥 Équipe',
-  business:    '📊 Business',
+  identity:     '🏠 Établissement',
+  role:         '👤 Votre rôle',
+  haccp:        '🌡️ Zones HACCP',
+  fournisseurs: '🚚 Fournisseurs',
+  stock:        '📦 Stock initial',
+  recettes:     '📋 Recettes',
+  equipe:       '👥 Équipe',
+  business:     '📊 Business',
 }
 
 const STEP_CHOICES = {
@@ -44,38 +44,69 @@ const ROLE_MAP = {
 
 function parseActions(text) {
   const actions = []
-  const lines = text.split('\n')
-  for (const line of lines) {
-    const t = line.trim()
-    if (t.startsWith('{') && t.includes('"action"')) {
-      try {
-        const obj = JSON.parse(t)
-        if (obj.action) actions.push(obj)
-      } catch {}
-    }
-  }
-  const cbRegex = /```(?:json)?\s*\n?(\{[\s\S]*?"action"[\s\S]*?\})\s*\n?```/g
-  let m
-  while ((m = cbRegex.exec(text)) !== null) {
+  const seen    = new Set()
+
+  function tryAdd(raw) {
     try {
-      const obj = JSON.parse(m[1].trim())
-      if (obj.action && !actions.find(a => a.action === obj.action && a.step === obj.step)) {
-        actions.push(obj)
-      }
+      const obj = JSON.parse(raw.trim())
+      if (!obj.action) return
+      const key = JSON.stringify({ action: obj.action, step: obj.step })
+      if (!seen.has(key)) { seen.add(key); actions.push(obj) }
     } catch {}
   }
+
+  // Method 1 — JSON in code blocks ```json ... ```
+  const cbRegex = /```(?:json)?\s*\n?(\{[\s\S]*?"action"[\s\S]*?\})\s*\n?```/g
+  let m
+  while ((m = cbRegex.exec(text)) !== null) tryAdd(m[1])
+
+  // Method 2 — Lines starting with {
+  for (const line of text.split('\n')) {
+    const t = line.trim()
+    if (t.startsWith('{') && t.includes('"action"')) tryAdd(t)
+  }
+
+  // Method 3 — Find action JSON anywhere (brace-matching)
+  const anyRe = /\{"action"\s*:/g
+  let am
+  while ((am = anyRe.exec(text)) !== null) {
+    let depth = 0, i = am.index
+    for (; i < text.length; i++) {
+      if (text[i] === '{') depth++
+      else if (text[i] === '}') { depth--; if (depth === 0) break }
+    }
+    tryAdd(text.slice(am.index, i + 1))
+  }
+
   return actions
 }
 
 function cleanText(text) {
   let t = text.replace(/```(?:json)?\s*\n?\{[\s\S]*?"action"[\s\S]*?\}\s*\n?```/g, '')
-  t = t.split('\n').filter(l => !l.trim().startsWith('{"action"')).join('\n')
+  t = t.split('\n').filter(l => {
+    const tr = l.trim()
+    return !(tr.startsWith('{"action"') || tr.startsWith('{ "action"'))
+  }).join('\n')
   return t.trim()
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-function Bubble({ isAria, children }) {
+function Bubble({ isAria, isStatus, isError, children }) {
+  if (isStatus) {
+    return (
+      <div style={{ display:'flex', justifyContent:'center', marginBottom:8 }}>
+        <div style={{
+          padding:'5px 14px', borderRadius:20, fontSize:12.5, fontWeight:600,
+          background: isError ? '#FEF2F2' : '#ECFDF5',
+          color:      isError ? '#DC2626'  : '#059669',
+          border:     `1px solid ${isError ? '#FECACA' : '#A7F3D0'}`,
+        }}>
+          {children}
+        </div>
+      </div>
+    )
+  }
   return (
     <div style={{ display:'flex', justifyContent: isAria ? 'flex-start' : 'flex-end', marginBottom:10, padding:'0 4px' }}>
       {isAria && (
@@ -114,75 +145,211 @@ function TypingIndicator() {
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 export default function Onboarding({ user, onComplete }) {
-  const [messages, setMessages] = useState([])
-  const [input, setInput]       = useState('')
-  const [loading, setLoading]   = useState(false)
-  const [step, setStep]         = useState(0)
-  const [choices, setChoices]   = useState([])
-  const apiHistory  = useRef([])
-  const bottomRef   = useRef(null)
-  const inputRef    = useRef(null)
-  const initialized = useRef(false)
+  const [messages,  setMessages]  = useState([])
+  const [input,     setInput]     = useState('')
+  const [loading,   setLoading]   = useState(false)
+  const [step,      setStep]      = useState(0)
+  const [choices,   setChoices]   = useState([])
+
+  const apiHistory       = useRef([])
+  const bottomRef        = useRef(null)
+  const inputRef         = useRef(null)
+  const initialized      = useRef(false)
+  // Stores the real UUID from etablissements.id (NOT user.id)
+  const etablissementIdRef = useRef(null)
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, loading])
 
+  // ── Helpers ──────────────────────────────────────────────────────────────────
+
+  function addStatus(msg, isError = false) {
+    setMessages(prev => [...prev, { role: 'status', content: msg, isError }])
+  }
+
+  // Fetch (or create) the etablissement and return its real UUID
+  async function getEtabId() {
+    if (etablissementIdRef.current) return etablissementIdRef.current
+    const { data } = await supabase
+      .from('etablissements')
+      .select('id')
+      .eq('owner_id', user.id)
+      .single()
+    if (data?.id) {
+      etablissementIdRef.current = data.id
+      console.log('[Onboarding] 📌 etablissement_id récupéré:', data.id)
+    }
+    return etablissementIdRef.current
+  }
+
+  // ── Save handler ──────────────────────────────────────────────────────────────
+
   async function executeSave(stepName, data) {
     const uid = user.id
+    console.log(`[Onboarding] 💾 executeSave — step=${stepName}`, data)
+
     try {
+
+      // ── IDENTITY ──────────────────────────────────────────────────────────
       if (stepName === 'identity') {
-        await upsertEtablissement({ owner_id: uid, nom: data.nom, type: data.type })
+        console.log('[Onboarding] → INSERT etablissements', { owner_id: uid, nom: data.nom, type: data.type })
+        const { error: etabErr } = await upsertEtablissement({ owner_id: uid, nom: data.nom, type: data.type || 'restaurant' })
+        if (etabErr) throw new Error(`etablissements: ${etabErr.message}`)
+
+        // Fetch generated id (upsert without .select() doesn't return it)
+        const { data: etabRow, error: fetchErr } = await supabase
+          .from('etablissements')
+          .select('id')
+          .eq('owner_id', uid)
+          .single()
+        if (fetchErr) throw new Error(`fetch etablissement: ${fetchErr.message}`)
+
+        etablissementIdRef.current = etabRow.id
+        console.log('[Onboarding] ✅ Etablissement créé — id:', etabRow.id)
+
+        // Persist etablissement_id on the profile
+        const { error: profileErr } = await supabase
+          .from('profiles')
+          .update({ etablissement_id: etabRow.id })
+          .eq('id', uid)
+        if (profileErr) console.warn('[Onboarding] ⚠️ profile.etablissement_id update:', profileErr.message)
+        else console.log('[Onboarding] ✅ profiles.etablissement_id =', etabRow.id)
+
+        addStatus('✓ Établissement enregistré')
       }
+
+      // ── ROLE ──────────────────────────────────────────────────────────────
       if (stepName === 'role' && data.role) {
-        const roleKey = ROLE_MAP[data.role] || data.role.toLowerCase()
-        await supabase.from('profiles').update({ role: roleKey }).eq('id', uid)
+        const roleKey = ROLE_MAP[data.role] || data.role.toLowerCase().replace(/\s+/g, '_')
+        console.log('[Onboarding] → UPDATE profiles.role =', roleKey)
+        const { error } = await supabase.from('profiles').update({ role: roleKey }).eq('id', uid)
+        if (error) throw new Error(`profiles.role: ${error.message}`)
+        console.log('[Onboarding] ✅ Rôle:', roleKey)
+        addStatus('✓ Rôle enregistré')
       }
+
+      // ── HACCP ─────────────────────────────────────────────────────────────
       if (stepName === 'haccp' && data.zones?.length) {
         for (const z of data.zones) {
-          await insertHaccpZone({ nom: z.nom, temp_min: z.temp_min, temp_max: z.temp_max, etablissement_id: uid })
+          console.log('[Onboarding] → INSERT haccp_zones', z)
+          // RLS: auth.uid() = etablissement_id → must use uid here
+          const { error } = await insertHaccpZone({ nom: z.nom, temp_min: z.temp_min, temp_max: z.temp_max, etablissement_id: uid })
+          if (error) throw new Error(`haccp_zones: ${error.message}`)
         }
+        console.log('[Onboarding] ✅', data.zones.length, 'zone(s) HACCP')
+        addStatus(`✓ ${data.zones.length} zone(s) HACCP enregistrée(s)`)
       }
+
+      // ── FOURNISSEURS ──────────────────────────────────────────────────────
       if (stepName === 'fournisseurs' && data.fournisseurs?.length) {
+        const etabId = await getEtabId()
         for (const f of data.fournisseurs) {
-          await upsertFournisseur({ nom: f.nom, mode: f.mode || 'tel', tel: f.tel || null, email: f.email || null, jours: f.jours || [], user_id: uid, etablissement_id: uid })
+          console.log('[Onboarding] → INSERT fournisseurs', f, '— etabId:', etabId)
+          const { error } = await upsertFournisseur({
+            nom:   f.nom,
+            mode:  f.mode  || 'tel',
+            tel:   f.tel   || null,
+            email: f.email || null,
+            jours: f.jours || [],
+            user_id:         uid,
+            etablissement_id: etabId,
+          })
+          if (error) throw new Error(`fournisseurs (${f.nom}): ${error.message}`)
         }
+        console.log('[Onboarding] ✅', data.fournisseurs.length, 'fournisseur(s)')
+        addStatus(`✓ ${data.fournisseurs.length} fournisseur(s) enregistré(s)`)
       }
+
+      // ── STOCK ─────────────────────────────────────────────────────────────
       if (stepName === 'stock' && !data.skipped && data.produits?.length) {
-        await upsertStock(data.produits.map(p => ({ nom: p.nom, q: Number(p.q) || 0, u: p.u || 'unité', cat: p.cat || 'autre', user_id: uid, etablissement_id: uid })))
+        const etabId = await getEtabId()
+        const items  = data.produits.map(p => ({
+          nom: p.nom, q: Number(p.q) || 0, u: p.u || 'unité', cat: p.cat || 'autre',
+          user_id: uid, etablissement_id: etabId,
+        }))
+        console.log('[Onboarding] → INSERT stock', items, '— etabId:', etabId)
+        const { error } = await upsertStock(items)
+        if (error) throw new Error(`stock: ${error.message}`)
+        console.log('[Onboarding] ✅', items.length, 'produit(s)')
+        addStatus(`✓ ${items.length} produit(s) ajouté(s) au stock`)
       }
+
+      // ── RECETTES ──────────────────────────────────────────────────────────
       if (stepName === 'recettes' && !data.skipped && data.recettes?.length) {
+        const etabId = await getEtabId()
         for (const r of data.recettes) {
-          await upsertRecette({ nom: r.nom, portions: r.portions || 1, ingredients: r.ingredients || [], user_id: uid, etablissement_id: uid })
+          console.log('[Onboarding] → INSERT recettes', r, '— etabId:', etabId)
+          const { error } = await upsertRecette({
+            nom:         r.nom,
+            portions:    r.portions    || 1,
+            ingredients: r.ingredients || [],
+            user_id:         uid,
+            etablissement_id: etabId,
+          })
+          if (error) throw new Error(`recettes (${r.nom}): ${error.message}`)
         }
+        console.log('[Onboarding] ✅', data.recettes.length, 'recette(s)')
+        addStatus(`✓ ${data.recettes.length} recette(s) enregistrée(s)`)
       }
+
+      // ── EQUIPE ────────────────────────────────────────────────────────────
       if (stepName === 'equipe' && !data.skipped && data.membres?.length) {
-        for (const m of data.membres) {
-          await upsertEquipeMembre({ name: m.name, role: m.role || 'employe', pin_code: m.pin_code || '', owner_id: uid })
+        for (const mem of data.membres) {
+          console.log('[Onboarding] → INSERT equipe_membres', mem)
+          const { error } = await upsertEquipeMembre({
+            name:     mem.name,
+            role:     mem.role     || 'employe',
+            pin_code: mem.pin_code || '',
+            owner_id: uid,
+          })
+          if (error) throw new Error(`equipe_membres (${mem.name}): ${error.message}`)
         }
+        console.log('[Onboarding] ✅', data.membres.length, 'membre(s)')
+        addStatus(`✓ ${data.membres.length} membre(s) d'équipe enregistré(s)`)
       }
+
+      // ── BUSINESS ─────────────────────────────────────────────────────────
       if (stepName === 'business') {
-        await supabase.from('etablissements').update({
-          settings: { couverts_semaine: data.couverts_semaine, type_cuisine: data.type_cuisine },
-        }).eq('owner_id', uid)
+        console.log('[Onboarding] → UPDATE etablissements.settings', data)
+        const { error } = await supabase
+          .from('etablissements')
+          .update({ settings: { couverts_semaine: data.couverts_semaine, type_cuisine: data.type_cuisine } })
+          .eq('owner_id', uid)
+        if (error) throw new Error(`etablissements.settings: ${error.message}`)
+        console.log('[Onboarding] ✅ Business')
+        addStatus('✓ Informations business enregistrées')
       }
+
     } catch (err) {
-      console.error('[Onboarding] save error:', stepName, err)
+      console.error(`[Onboarding] ❌ save error (step=${stepName}):`, err.message, err)
+      addStatus(`✗ Erreur (${stepName}) : ${err.message}`, true)
     }
-    const idx = STEPS.indexOf(stepName)
+
+    const idx     = STEPS.indexOf(stepName)
     const nextIdx = idx + 1
     setStep(nextIdx)
     setChoices(STEP_CHOICES[STEPS[nextIdx]] || [])
   }
 
+  // ── Complete ──────────────────────────────────────────────────────────────────
+
   async function executeComplete() {
+    console.log('[Onboarding] 🎉 executeComplete')
     try {
-      await supabase.from('profiles').update({ onboarding_completed: true }).eq('id', user.id)
+      const { error } = await supabase
+        .from('profiles')
+        .update({ onboarding_completed: true })
+        .eq('id', user.id)
+      if (error) throw error
+      console.log('[Onboarding] ✅ onboarding_completed = true')
     } catch (err) {
-      console.error('[Onboarding] complete error:', err)
+      console.error('[Onboarding] ❌ complete error:', err)
     }
     setTimeout(() => onComplete(), 800)
   }
+
+  // ── Send message ──────────────────────────────────────────────────────────────
 
   async function send(text) {
     if (!text.trim() || loading) return
@@ -194,17 +361,22 @@ export default function Onboarding({ user, onComplete }) {
 
     const history = [...apiHistory.current]
     try {
+      console.log('[Onboarding] 📤 Envoi message:', trimmed)
       const res = await fetch('/api/aria-onboarding', {
-        method: 'POST',
+        method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: trimmed, history }),
+        body:    JSON.stringify({ message: trimmed, history }),
       })
       const data  = await res.json()
       const reply = data.reply || ''
 
+      console.log('[Onboarding] 📥 Réponse API:', reply.slice(0, 200), reply.length > 200 ? '…' : '')
+
       apiHistory.current = [...history, { role: 'user', content: trimmed }, { role: 'assistant', content: reply }]
 
       const actions = parseActions(reply)
+      console.log('[Onboarding] 🔍 Actions détectées:', actions)
+
       for (const action of actions) {
         if (action.action === 'save')          await executeSave(action.step, action.data || {})
         else if (action.action === 'complete') await executeComplete()
@@ -212,24 +384,28 @@ export default function Onboarding({ user, onComplete }) {
 
       const display = cleanText(reply)
       if (display) setMessages(prev => [...prev, { role: 'assistant', content: display }])
-    } catch {
+    } catch (err) {
+      console.error('[Onboarding] ❌ send error:', err)
       setMessages(prev => [...prev, { role: 'assistant', content: "Désolée, une erreur est survenue. Réessaye !" }])
     } finally {
       setLoading(false)
     }
   }
 
+  // ── Init ──────────────────────────────────────────────────────────────────────
+
   useEffect(() => {
     if (initialized.current) return
     initialized.current = true
+
     const init = async () => {
       setLoading(true)
       const trigger = "Bonjour ! Je viens de créer mon compte Aria. Je suis prêt à configurer mon établissement."
       try {
         const res = await fetch('/api/aria-onboarding', {
-          method: 'POST',
+          method:  'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: trigger, history: [] }),
+          body:    JSON.stringify({ message: trigger, history: [] }),
         })
         const data  = await res.json()
         const reply = data.reply || ''
@@ -237,7 +413,7 @@ export default function Onboarding({ user, onComplete }) {
         const display = cleanText(reply)
         if (display) setMessages([{ role: 'assistant', content: display }])
       } catch {
-        const fallback = "Bonjour ! Je suis Aria, votre assistante cuisine.\n\nBienvenue dans la configuration de votre établissement — ça ne prend que quelques minutes.\n\nCommençons par le commencement : quel est le nom de votre restaurant ?"
+        const fallback = "Bonjour ! Je suis Aria, votre assistante cuisine.\n\nBienvenue dans la configuration de votre établissement — ça ne prend que quelques minutes.\n\nCommençons : quel est le nom de votre restaurant ?"
         apiHistory.current = [{ role: 'user', content: trigger }, { role: 'assistant', content: fallback }]
         setMessages([{ role: 'assistant', content: fallback }])
       } finally {
@@ -246,6 +422,8 @@ export default function Onboarding({ user, onComplete }) {
     }
     init()
   }, [])
+
+  // ── Render ────────────────────────────────────────────────────────────────────
 
   const progress  = Math.round((step / 8) * 100)
   const stepLabel = step < 8
@@ -272,7 +450,9 @@ export default function Onboarding({ user, onComplete }) {
       {/* Chat */}
       <div style={{ flex:1, overflowY:'auto', padding:'14px 12px 6px' }}>
         {messages.map((m, i) => (
-          <Bubble key={i} isAria={m.role === 'assistant'}>{m.content}</Bubble>
+          m.role === 'status'
+            ? <Bubble key={i} isStatus isError={m.isError}>{m.content}</Bubble>
+            : <Bubble key={i} isAria={m.role === 'assistant'}>{m.content}</Bubble>
         ))}
         {loading && <TypingIndicator />}
         <div ref={bottomRef} style={{ height:4 }} />
@@ -318,7 +498,7 @@ export default function Onboarding({ user, onComplete }) {
       <style>{`
         @keyframes onb-bounce {
           0%,80%,100% { transform: translateY(0) }
-          40% { transform: translateY(-5px) }
+          40%          { transform: translateY(-5px) }
         }
       `}</style>
     </div>

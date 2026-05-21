@@ -187,7 +187,7 @@ export async function insertLabResult(result) {
 }
 
 export async function upsertEtablissement(etab) {
-  const { data, error } = await supabase.from('etablissements').upsert(etab, { onConflict: 'owner_id' });
+  const { data, error } = await supabase.from('etablissements').upsert(etab, { onConflict: 'owner_id' }).select();
   return { data, error };
 }
 
