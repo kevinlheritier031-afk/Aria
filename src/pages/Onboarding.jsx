@@ -193,28 +193,22 @@ export default function Onboarding({ user, onComplete }) {
 
       // ── IDENTITY ──────────────────────────────────────────────────────────
       if (stepName === 'identity') {
-        console.log('[Onboarding] → INSERT etablissements', { owner_id: uid, nom: data.nom, type: data.type })
-        const { error: etabErr } = await upsertEtablissement({ owner_id: uid, nom: data.nom, type: data.type || 'restaurant' })
+        console.log('[Onboarding] → UPSERT etablissements', { owner_id: uid, nom: data.nom, type: data.type })
+        const { data: etabData, error: etabErr } = await upsertEtablissement({ owner_id: uid, nom: data.nom, type: data.type || 'restaurant' })
         if (etabErr) throw new Error(`etablissements: ${etabErr.message}`)
 
-        // Fetch generated id (upsert without .select() doesn't return it)
-        const { data: etabRow, error: fetchErr } = await supabase
-          .from('etablissements')
-          .select('id')
-          .eq('owner_id', uid)
-          .single()
-        if (fetchErr) throw new Error(`fetch etablissement: ${fetchErr.message}`)
-
-        etablissementIdRef.current = etabRow.id
-        console.log('[Onboarding] ✅ Etablissement créé — id:', etabRow.id)
+        const etabId = etabData?.[0]?.id
+        if (!etabId) throw new Error('etablissement ID introuvable après upsert')
+        etablissementIdRef.current = etabId
+        console.log('[Onboarding] ✅ Etablissement upsert — id:', etabId)
 
         // Persist etablissement_id on the profile
         const { error: profileErr } = await supabase
           .from('profiles')
-          .update({ etablissement_id: etabRow.id })
+          .update({ etablissement_id: etabId })
           .eq('id', uid)
         if (profileErr) console.warn('[Onboarding] ⚠️ profile.etablissement_id update:', profileErr.message)
-        else console.log('[Onboarding] ✅ profiles.etablissement_id =', etabRow.id)
+        else console.log('[Onboarding] ✅ profiles.etablissement_id =', etabId)
 
         addStatus('✓ Établissement enregistré')
       }
