@@ -21,7 +21,7 @@ create table if not exists etablissements (
   nom         text not null,
   adresse     text,
   type        text default 'restaurant',
-  owner_id    uuid references profiles(id),
+  owner_id    uuid references profiles(id) unique,
   abonnement  text default 'starter',
   actif       boolean default true,
   created_at  timestamptz default now()
