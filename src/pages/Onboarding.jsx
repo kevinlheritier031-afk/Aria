@@ -299,10 +299,14 @@ export default function Onboarding({ user, onComplete }) {
       if (stepName === 'equipe' && !data.skipped && data.membres?.length) {
         for (const mem of data.membres) {
           const { data: memData, error } = await supabase.from('equipe_membres').insert({
-            name:     mem.name || 'Membre',
-            role:     mem.role     || 'employe',
-            pin_code: mem.pin_code || '',
             owner_id: uid,
+            email:    '',
+            name:     mem.name     || 'Membre',
+            role:     mem.role     || 'employe',
+            pin_code: mem.pin_code || null,
+            actif:    true,
+            statut:   'actif',
+            formation: {},
           }).select()
           if (error) console.error('❌ INSERT FAIL:', 'equipe_membres', error)
           else console.log('✅ INSERT OK:', 'equipe_membres', memData)

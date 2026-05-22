@@ -170,10 +170,20 @@ create table if not exists equipe_membres (
   id          uuid default uuid_generate_v4() primary key,
   owner_id    uuid references auth.users on delete cascade,
   name        text not null,
+  email       text default '',
   role        text not null default 'employe',
   pin_code    text,
+  actif       boolean default true,
+  statut      text default 'actif',
+  formation   jsonb default '{}',
   created_at  timestamptz default now()
 );
+-- Ensure all columns exist in case the table was created with an older schema
+alter table equipe_membres add column if not exists name      text;
+alter table equipe_membres add column if not exists email     text      default '';
+alter table equipe_membres add column if not exists actif     boolean   default true;
+alter table equipe_membres add column if not exists statut    text      default 'actif';
+alter table equipe_membres add column if not exists formation jsonb     default '{}';
 
 create table if not exists haccp_zones (
   id               uuid default uuid_generate_v4() primary key,
