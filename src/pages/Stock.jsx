@@ -328,7 +328,7 @@ function Field({ label, children }) {
 
 // ── Stock Page ────────────────────────────────────────────────────────────────
 
-export default function Stock({ stock = [], setStock, fournisseurs = [], user, fromDashboard = false, onBack }) {
+export default function Stock({ stock = [], setStock, fournisseurs = [], user, profile, fromDashboard = false, onBack }) {
   const [mode,           setMode]           = useState('liste')
   const [filter,         setFilter]         = useState('tout')
   const [search,         setSearch]         = useState('')
@@ -370,7 +370,7 @@ export default function Stock({ stock = [], setStock, fournisseurs = [], user, f
 
   async function handleSave(form) {
     setSaving(true)
-    const payload = { ...form, user_id: user.id, updated_at: new Date().toISOString() }
+    const payload = { ...form, user_id: user.id, etablissement_id: profile?.etablissement_id, updated_at: new Date().toISOString() }
     if (!payload.id) { payload.id = uid(); payload.date_reception = fdate() }
     await upsertStock([payload])
     setStock(s => form.id ? s.map(i => i.id === form.id ? payload : i) : [payload, ...s])
@@ -386,14 +386,14 @@ export default function Stock({ stock = [], setStock, fournisseurs = [], user, f
 
   async function handleSortie(item, qte, motif) {
     const newQ   = Math.max(0, item.q - qte)
-    const updated = { ...item, q: newQ, user_id: user.id }
+    const updated = { ...item, q: newQ, user_id: user.id, etablissement_id: profile?.etablissement_id }
     setStock(s => s.map(i => i.id === item.id ? { ...i, q: newQ } : i))
     await upsertStock([updated])
     setSortieItem(null)
   }
 
   async function handleFlashUpdate(item, newQ) {
-    const updated = { ...item, q: newQ, user_id: user.id }
+    const updated = { ...item, q: newQ, user_id: user.id, etablissement_id: profile?.etablissement_id }
     setStock(s => s.map(i => i.id === item.id ? { ...i, q: newQ } : i))
     await upsertStock([updated])
   }

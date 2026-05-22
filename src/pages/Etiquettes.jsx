@@ -165,7 +165,7 @@ function TabNouvelleEtiquette({ currentUser, stock, onPrint }) {
 
     const payload = {
       etablissement_id: currentUser.etablissementId,
-      created_by: currentUser.isTeamMember ? null : currentUser.etablissementId,
+      created_by: currentUser.isTeamMember ? null : currentUser.id,
       created_by_name: currentUser.name,
       produit: produit.trim(),
       type,
@@ -611,7 +611,7 @@ export default function Etiquettes({ user, profile, stock = [], fromDashboard, o
 
   const currentUser = {
     id:              user?.isTeamMember ? user?.memberId : user?.id,
-    etablissementId: user?.id,
+    etablissementId: profile?.etablissement_id || user?.id,
     isTeamMember:    user?.isTeamMember || false,
     name:            profile?.name || 'Utilisateur',
     role:            profile?.role || 'employe',

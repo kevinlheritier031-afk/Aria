@@ -117,7 +117,7 @@ const EMPTY_FORM = () => ({
   cout_estime:'', temps_prep:'', temps_cuisson:'', notes:'',
 })
 
-function RecetteForm({ initial, onSave, onCancel, user }) {
+function RecetteForm({ initial, onSave, onCancel, user, profile }) {
   const [form,      setForm]      = useState(initial ? { ...initial, cout_estime: initial.cout_estime ?? '', temps_prep: initial.temps_prep ?? '', temps_cuisson: initial.temps_cuisson ?? '', notes: initial.notes ?? '' } : EMPTY_FORM())
   const [scanning,  setScanning]  = useState(false)
   const [saving,    setSaving]    = useState(false)
@@ -177,6 +177,7 @@ function RecetteForm({ initial, onSave, onCancel, user }) {
     const payload = {
       id:            initial?.id || uid(),
       user_id:       user.id,
+      etablissement_id: profile?.etablissement_id,
       nom:           form.nom.trim(),
       nb_personnes:  parseInt(form.nb_personnes) || 4,
       cat:           form.cat,
@@ -454,7 +455,7 @@ function RecetteDetail({ rec, onEdit, onDelete, onClose }) {
   )
 }
 
-export default function Recettes({ stock, user, fromDashboard, onBack }) {
+export default function Recettes({ stock, user, profile, fromDashboard, onBack }) {
   const [recettes,  setRecettes]  = useState([])
   const [loading,   setLoading]   = useState(true)
   const [view,      setView]      = useState('list')
@@ -577,6 +578,7 @@ export default function Recettes({ stock, user, fromDashboard, onBack }) {
             <RecetteForm
               initial={editRec}
               user={user}
+              profile={profile}
               onSave={handleSave}
               onCancel={() => { setView(editRec ? 'detail' : 'list'); setEditRec(null) }}
             />

@@ -124,7 +124,8 @@ export default function Reception({ scanLog = [], setScanLog, stock = [], setSto
     setSaving(true)
     const nonConf = products.filter(p => p._conf === 'non_conforme').length
     const finalConf = nonConf > 0 ? 'non_conforme' : products.every(p => p._conf === 'conforme') ? 'conforme' : 'a_verifier'
-    const etablissementId = profile?.etablissement_id || null
+    const etablissementId = profile?.etablissement_id ?? null
+    if (!etablissementId) { setSaving(false); setError('Établissement non chargé, réessayez.'); return }
 
     const scan = {
       id: uid(), user_id: user.id, etablissement_id: etablissementId,

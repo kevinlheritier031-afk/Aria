@@ -402,6 +402,7 @@ export default function App() {
                 setStock={setStock}
                 fournisseurs={fournisseurs}
                 user={user}
+                profile={profile}
                 fromDashboard={navSource === 'dashboard'}
                 onBack={handleBack}
               />
@@ -422,6 +423,7 @@ export default function App() {
               <Recettes
                 stock={stock}
                 user={user}
+                profile={profile}
                 fromDashboard={navSource === 'dashboard'}
                 onBack={handleBack}
               />
