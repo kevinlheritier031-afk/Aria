@@ -106,7 +106,7 @@ export const BOTTOM_NAV_ITEMS = [
   { k:'stock',      label:'Stock',    emoji:'📦' },
   { k:'aria',       label:'Aria',     emoji:'✦'  },
   { k:'etiquettes', label:'DLC',      emoji:'🏷️' },
-  { k:'business',   label:'Business', emoji:'📊' },
+  { k:'parametres', label:'Réglages', emoji:'⚙️' },
 ];
 
 export const ALLERGENES = [

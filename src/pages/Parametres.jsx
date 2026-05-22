@@ -25,7 +25,7 @@ const S = {
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-function ConfirmModal({ message, onConfirm, onCancel }) {
+function ConfirmModal({ message, onConfirm, onCancel, confirmLabel = 'Confirmer' }) {
   return (
     <div style={{ position:'fixed', inset:0, zIndex:1000, display:'flex', alignItems:'center', justifyContent:'center', background:'rgba(15,23,42,.55)', backdropFilter:'blur(4px)', padding:20 }}>
       <div style={{ background:'#fff', borderRadius:20, padding:'28px 24px', maxWidth:320, width:'100%', boxShadow:'0 24px 64px rgba(0,0,0,.18)', fontFamily:"'Plus Jakarta Sans',sans-serif", textAlign:'center' }}>
@@ -34,7 +34,7 @@ function ConfirmModal({ message, onConfirm, onCancel }) {
         <div style={{ fontSize:13.5, color:'#64748B', marginBottom:22, lineHeight:1.5 }}>{message}</div>
         <div style={{ display:'flex', gap:10 }}>
           <button onClick={onCancel}  style={{ flex:1, ...S.btnGhost }}>Annuler</button>
-          <button onClick={onConfirm} style={{ flex:1, ...S.btnDanger }}>Confirmer</button>
+          <button onClick={onConfirm} style={{ flex:1, ...S.btnDanger }}>{confirmLabel}</button>
         </div>
       </div>
     </div>
@@ -56,6 +56,7 @@ export default function Parametres({ user, profile: initProfile, setProfile, onL
   const [saving,      setSaving]      = useState({})
   const [confirm,     setConfirm]     = useState(null)
   const [toast,       setToast]       = useState(null)
+  const [deleting,    setDeleting]    = useState(false)
 
   // Compte
   const [displayName, setDisplayName] = useState('')
@@ -252,6 +253,41 @@ export default function Parametres({ user, profile: initProfile, setProfile, onL
         showToast('Fournisseur supprimé')
       },
     })
+
+  // ── Suppression compte ─────────────────────────────────────────────────────
+  const confirmDeleteAccount = () =>
+    setConfirm({
+      msg:          'Cette action est irréversible. Toutes vos données seront supprimées.',
+      confirmLabel: 'Confirmer la suppression',
+      onConfirm:    deleteAccount,
+    })
+
+  const deleteAccount = async () => {
+    setConfirm(null)
+    setDeleting(true)
+    try {
+      const eid = etab?.id
+      if (eid) {
+        const tables = [
+          'temperatures','scans','prix_historique','mise_en_place','couverts',
+          'aria_conversations','haccp_zones','recettes','stock','fournisseurs',
+          'equipe_membres','etiquettes','aria_analytics','menus','clotures_service',
+        ]
+        for (const t of tables) {
+          await supabase.from(t).delete().eq('etablissement_id', eid)
+        }
+        await supabase.from('etablissements').delete().eq('id', eid)
+      }
+      await supabase.from('lab_results').delete().eq('user_id', user.id)
+      await supabase.from('profiles').delete().eq('id', user.id)
+      await supabase.auth.signOut()
+      onLogout()
+    } catch (err) {
+      console.error('[Parametres] deleteAccount:', err)
+      showToast('Erreur lors de la suppression', 'error')
+      setDeleting(false)
+    }
+  }
 
   // ── Business ───────────────────────────────────────────────────────────────
   const saveBusiness = async () => {
@@ -503,15 +539,20 @@ export default function Parametres({ user, profile: initProfile, setProfile, onL
 
         <div>
           <div style={{ fontSize:13.5, fontWeight:600, color:'#0F172A', marginBottom:3 }}>Supprimer mon compte</div>
-          <div style={{ fontSize:12.5, color:'#94A3B8', marginBottom:10 }}>Action irréversible — toutes les données seront supprimées définitivement.</div>
-          <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-            <button disabled style={{ ...S.btnDanger, opacity:.35, cursor:'not-allowed' }}>Supprimer mon compte</button>
-            <span style={S.badge}>Contacter le support</span>
+          <div style={{ fontSize:12.5, color:'#94A3B8', marginBottom:10 }}>
+            Supprime toutes vos données (stock, HACCP, recettes, équipe…) et réinitialise l'onboarding.
           </div>
+          <button
+            onClick={confirmDeleteAccount}
+            disabled={deleting}
+            style={{ ...S.btnDanger, opacity: deleting ? .6 : 1, cursor: deleting ? 'not-allowed' : 'pointer' }}
+          >
+            {deleting ? 'Suppression en cours…' : 'Supprimer mon compte'}
+          </button>
         </div>
       </div>
 
-      {confirm && <ConfirmModal message={confirm.msg} onConfirm={confirm.onConfirm} onCancel={() => setConfirm(null)} />}
+      {confirm && <ConfirmModal message={confirm.msg} confirmLabel={confirm.confirmLabel} onConfirm={confirm.onConfirm} onCancel={() => setConfirm(null)} />}
       {toast   && <Toast msg={toast.msg} type={toast.type} />}
     </div>
   )
