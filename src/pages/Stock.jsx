@@ -371,7 +371,8 @@ export default function Stock({ stock = [], setStock, fournisseurs = [], user, p
   async function handleSave(form) {
     setSaving(true)
     const payload = { ...form, user_id: user.id, etablissement_id: profile?.etablissement_id, updated_at: new Date().toISOString() }
-    if (!payload.id) { payload.id = uid(); payload.date_reception = fdate() }
+    if (!payload.id) { payload.id = crypto.randomUUID(); payload.date_reception = fdate() }
+    console.log('EID scan:', payload.etablissement_id)
     const { error } = await upsertStock([payload])
     if (error) {
       console.error('❌ INSERT FAIL:', 'stock', error)

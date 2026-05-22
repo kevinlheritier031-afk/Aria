@@ -175,7 +175,7 @@ function RecetteForm({ initial, onSave, onCancel, user, profile }) {
     if (!form.nom.trim()) { setFormError('Le nom de la recette est requis'); return }
     setSaving(true)
     const payload = {
-      id:            initial?.id || uid(),
+      id:            initial?.id || crypto.randomUUID(),
       user_id:       user.id,
       etablissement_id: profile?.etablissement_id,
       nom:           form.nom.trim(),
@@ -189,6 +189,7 @@ function RecetteForm({ initial, onSave, onCancel, user, profile }) {
       temps_cuisson: parseInt(form.temps_cuisson) || null,
       notes:         form.notes.trim() || null,
     }
+    console.log('EID scan:', payload.etablissement_id)
     const { error } = await upsertRecette(payload)
     setSaving(false)
     if (error) {

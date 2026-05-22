@@ -25,11 +25,15 @@ const STEP_CHOICES = {
 }
 
 const ROLE_MAP = {
-  'Propriétaire':     'proprietaire',
-  'Chef de cuisine':  'chef',
-  'Second de cuisine':'second',
-  'Cuisinier':        'cuisinier',
-  'Pâtissier':        'patissier',
+  'Propriétaire':      'proprietaire',
+  'Gérant':            'manager',
+  'Chef de cuisine':   'chef',
+  'Second de cuisine': 'second',
+  'Cuisinier':         'cuisinier',
+  'Pâtissier':         'patissier',
+  'Employé':           'employe',
+  'Apprenti':          'apprenti',
+  'Stagiaire':         'stagiaire',
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -137,11 +141,16 @@ function TypingIndicator() {
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 export default function Onboarding({ user, onComplete }) {
-  const [phase,      setPhase]      = useState('password')
-  const [pwdVal,     setPwdVal]     = useState('')
-  const [pwdConfirm, setPwdConfirm] = useState('')
-  const [pwdError,   setPwdError]   = useState('')
-  const [pwdLoading, setPwdLoading] = useState(false)
+  const [phase,       setPhase]       = useState('password')
+  const [pwdVal,      setPwdVal]      = useState('')
+  const [pwdConfirm,  setPwdConfirm]  = useState('')
+  const [pwdError,    setPwdError]    = useState('')
+  const [pwdLoading,  setPwdLoading]  = useState(false)
+
+  const [prenom,      setPrenom]      = useState('')
+  const [nom,         setNom]         = useState('')
+  const [nameError,   setNameError]   = useState('')
+  const [nameLoading, setNameLoading] = useState(false)
 
   const [messages,  setMessages]  = useState([])
   const [input,     setInput]     = useState('')
@@ -414,12 +423,38 @@ export default function Onboarding({ user, onComplete }) {
 
   async function handleSetPassword() {
     setPwdError('')
-    if (pwdVal.length < 8) { setPwdError('Le mot de passe doit faire au moins 8 caractères.'); return }
+    const checks = {
+      length:  pwdVal.length >= 8,
+      upper:   /[A-Z]/.test(pwdVal),
+      lower:   /[a-z]/.test(pwdVal),
+      number:  /[0-9]/.test(pwdVal),
+      special: /[^A-Za-z0-9]/.test(pwdVal),
+    }
+    const score = Object.values(checks).filter(Boolean).length
+    if (score < 4) { setPwdError('Le mot de passe est trop faible — ajoutez majuscule, chiffre ou caractère spécial.'); return }
     if (pwdVal !== pwdConfirm) { setPwdError('Les mots de passe ne correspondent pas.'); return }
     setPwdLoading(true)
     const { error } = await supabase.auth.updateUser({ password: pwdVal })
     setPwdLoading(false)
     if (error) { setPwdError(error.message || 'Erreur lors de la mise à jour.'); return }
+    setPhase('name')
+  }
+
+  async function handleSetName() {
+    setNameError('')
+    if (!prenom.trim()) { setNameError('Le prénom est requis.'); return }
+    setNameLoading(true)
+    const displayName = prenom.trim()
+    const fullName    = nom.trim() ? `${prenom.trim()} ${nom.trim()}` : prenom.trim()
+    userNameRef.current = displayName
+    const { error } = await supabase.from('profiles').upsert({
+      id:           user.id,
+      name:         fullName,
+      display_name: displayName,
+      email:        user.email || '',
+    }, { onConflict: 'id' })
+    setNameLoading(false)
+    if (error) { setNameError('Erreur : ' + error.message); return }
     setPhase('chat')
   }
 
@@ -456,14 +491,30 @@ export default function Onboarding({ user, onComplete }) {
 
   // ── Render ────────────────────────────────────────────────────────────────────
 
+  // Password strength (computed each render for UI + button state)
+  const _pwdChecks = {
+    length:  pwdVal.length >= 8,
+    upper:   /[A-Z]/.test(pwdVal),
+    lower:   /[a-z]/.test(pwdVal),
+    number:  /[0-9]/.test(pwdVal),
+    special: /[^A-Za-z0-9]/.test(pwdVal),
+  }
+  const pwdScore = Object.values(_pwdChecks).filter(Boolean).length
+  const pwdColor = pwdScore <= 1 ? '#EF4444' : pwdScore <= 2 ? '#F59E0B' : pwdScore <= 3 ? '#F0A500' : pwdScore <= 4 ? '#84CC16' : '#10B981'
+  const pwdStrLabel = pwdScore <= 1 ? 'Très faible' : pwdScore <= 2 ? 'Faible' : pwdScore <= 3 ? 'Moyen' : pwdScore <= 4 ? 'Bon' : 'Fort ✓'
+
   const progress  = phase === 'password'
     ? 0
-    : Math.round((step + 1) / 9 * 100)
+    : phase === 'name'
+      ? 10
+      : Math.round((step + 2) / 10 * 100)
   const stepLabel = phase === 'password'
-    ? 'Étape 1/9 — 🔐 Mot de passe'
-    : step < 8
-      ? `Étape ${step + 2}/9 — ${STEP_LABELS[STEPS[step]] || ''}`
-      : '✓ Configuration terminée !'
+    ? 'Étape 1/10 — 🔐 Mot de passe'
+    : phase === 'name'
+      ? 'Étape 2/10 — 👤 Votre identité'
+      : step < 8
+        ? `Étape ${step + 3}/10 — ${STEP_LABELS[STEPS[step]] || ''}`
+        : '✓ Configuration terminée !'
 
   return (
     <div style={{ display:'flex', flexDirection:'column', height:'100dvh', background:'#F8FAFC', fontFamily:"'Plus Jakarta Sans','DM Sans',sans-serif", overflow:'hidden' }}>
@@ -521,6 +572,34 @@ export default function Onboarding({ user, onComplete }) {
                 />
               </div>
 
+              {/* Strength bar */}
+              {pwdVal.length > 0 && (
+                <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
+                  <div style={{ display:'flex', gap:3 }}>
+                    {[1,2,3,4,5].map(i => (
+                      <div key={i} style={{ flex:1, height:4, borderRadius:4, background: i <= pwdScore ? pwdColor : '#E2E8F0', transition:'background .2s' }} />
+                    ))}
+                  </div>
+                  <div style={{ fontSize:11.5, fontWeight:600, color: pwdColor }}>{pwdStrLabel}</div>
+                  <div style={{ display:'flex', flexWrap:'wrap', gap:5, marginTop:2 }}>
+                    {[
+                      { k:'length',  l:'8 car.' },
+                      { k:'upper',   l:'Majuscule' },
+                      { k:'lower',   l:'Minuscule' },
+                      { k:'number',  l:'Chiffre' },
+                      { k:'special', l:'Spécial' },
+                    ].map(({ k, l }) => (
+                      <span key={k} style={{ fontSize:11, padding:'2px 7px', borderRadius:99, fontWeight:500,
+                        background: _pwdChecks[k] ? '#ECFDF5' : '#F8FAFC',
+                        color:      _pwdChecks[k] ? '#059669'  : '#94A3B8',
+                        border:     `1px solid ${_pwdChecks[k] ? '#A7F3D0' : '#E2E8F0'}` }}>
+                        {_pwdChecks[k] ? '✓ ' : ''}{l}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {pwdError && (
                 <div style={{ padding:'10px 14px', borderRadius:10, background:'#FEF2F2', border:'1px solid #FECACA', color:'#DC2626', fontSize:13 }}>
                   {pwdError}
@@ -529,10 +608,66 @@ export default function Onboarding({ user, onComplete }) {
 
               <button
                 onClick={handleSetPassword}
-                disabled={pwdLoading}
-                style={{ padding:'13px', borderRadius:12, border:'none', background: pwdLoading ? '#E2E8F0' : 'linear-gradient(135deg,#2563EB,#1D4ED8)', color: pwdLoading ? '#94A3B8' : '#fff', fontSize:14, fontWeight:600, cursor: pwdLoading ? 'default' : 'pointer', fontFamily:'inherit' }}
+                disabled={pwdLoading || pwdScore < 4}
+                style={{ padding:'13px', borderRadius:12, border:'none', background: (pwdLoading || pwdScore < 4) ? '#E2E8F0' : 'linear-gradient(135deg,#2563EB,#1D4ED8)', color: (pwdLoading || pwdScore < 4) ? '#94A3B8' : '#fff', fontSize:14, fontWeight:600, cursor: (pwdLoading || pwdScore < 4) ? 'default' : 'pointer', fontFamily:'inherit' }}
               >
                 {pwdLoading ? 'Enregistrement…' : 'Créer mon mot de passe →'}
+              </button>
+            </div>
+
+          </div>
+        </div>
+
+      ) : phase === 'name' ? (
+
+        /* ── Étape 1 : prénom + nom ── */
+        <div style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'24px 20px' }}>
+          <div style={{ width:'100%', maxWidth:400, display:'flex', flexDirection:'column', gap:20 }}>
+
+            <div style={{ display:'flex', gap:10, alignItems:'flex-start' }}>
+              <div style={{ width:34, height:34, borderRadius:'50%', background:'linear-gradient(135deg,#2563EB,#7C3AED)', display:'flex', alignItems:'center', justifyContent:'center', color:'#fff', fontSize:14, flexShrink:0, marginTop:2 }}>✦</div>
+              <div style={{ padding:'11px 15px', borderRadius:'4px 16px 16px 16px', background:'#F1F5F9', fontSize:14, lineHeight:1.55, color:'#1E293B' }}>
+                Parfait ! Maintenant, comment vous appelez-vous ?
+              </div>
+            </div>
+
+            <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+              <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
+                <label style={{ fontSize:12, fontWeight:600, color:'#475569' }}>Prénom *</label>
+                <input
+                  type="text"
+                  value={prenom}
+                  onChange={e => setPrenom(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') handleSetName() }}
+                  placeholder="Votre prénom"
+                  autoFocus
+                  style={{ padding:'10px 14px', borderRadius:10, border:'1.5px solid #E2E8F0', fontSize:14, fontFamily:'inherit', outline:'none', background:'#F8FAFC', color:'#0F172A', boxSizing:'border-box', width:'100%' }}
+                />
+              </div>
+              <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
+                <label style={{ fontSize:12, fontWeight:600, color:'#475569' }}>Nom (optionnel)</label>
+                <input
+                  type="text"
+                  value={nom}
+                  onChange={e => setNom(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') handleSetName() }}
+                  placeholder="Votre nom de famille"
+                  style={{ padding:'10px 14px', borderRadius:10, border:'1.5px solid #E2E8F0', fontSize:14, fontFamily:'inherit', outline:'none', background:'#F8FAFC', color:'#0F172A', boxSizing:'border-box', width:'100%' }}
+                />
+              </div>
+
+              {nameError && (
+                <div style={{ padding:'10px 14px', borderRadius:10, background:'#FEF2F2', border:'1px solid #FECACA', color:'#DC2626', fontSize:13 }}>
+                  {nameError}
+                </div>
+              )}
+
+              <button
+                onClick={handleSetName}
+                disabled={nameLoading}
+                style={{ padding:'13px', borderRadius:12, border:'none', background: nameLoading ? '#E2E8F0' : 'linear-gradient(135deg,#2563EB,#1D4ED8)', color: nameLoading ? '#94A3B8' : '#fff', fontSize:14, fontWeight:600, cursor: nameLoading ? 'default' : 'pointer', fontFamily:'inherit' }}
+              >
+                {nameLoading ? 'Enregistrement…' : 'Continuer →'}
               </button>
             </div>
 

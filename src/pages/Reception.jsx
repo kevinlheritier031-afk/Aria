@@ -128,8 +128,9 @@ export default function Reception({ scanLog = [], setScanLog, stock = [], setSto
     const etablissementId = profile?.etablissement_id ?? null
     if (!etablissementId) console.warn('[Reception] ⚠️ etablissement_id null — scan sans liaison établissement')
 
+    console.log('EID scan:', etablissementId)
     const scan = {
-      id: uid(), user_id: user.id, etablissement_id: etablissementId,
+      id: crypto.randomUUID(), user_id: user.id, etablissement_id: etablissementId,
       four: result.fournisseur || '',
       nb: products.length,
       total: result.total || null,
@@ -150,7 +151,7 @@ export default function Reception({ scanLog = [], setScanLog, stock = [], setSto
 
     // Add products to stock
     const stockItems = products.map(p => ({
-      id: uid(), user_id: user.id, etablissement_id: etablissementId,
+      id: crypto.randomUUID(), user_id: user.id, etablissement_id: etablissementId,
       nom: p.nom, q: p.q || 0, u: p.u || 'unité',
       px: p.px || null, dlc: p.dlc || null,
       cat: p.cat || 'autre', four: result.fournisseur || '',
