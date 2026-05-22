@@ -297,16 +297,13 @@ export default function Onboarding({ user, onComplete }) {
 
       // ── EQUIPE ────────────────────────────────────────────────────────────
       if (stepName === 'equipe' && !data.skipped && data.membres?.length) {
+        if (!EID) throw new Error('EID manquant avant INSERT equipe_membres')
         for (const mem of data.membres) {
           const { data: memData, error } = await supabase.from('equipe_membres').insert({
-            owner_id: uid,
-            email:    '',
-            name:     mem.name     || 'Membre',
-            role:     mem.role     || 'employe',
-            pin_code: mem.pin_code || null,
-            actif:    true,
-            statut:   'actif',
-            formation: {},
+            etablissement_id: EID,
+            prenom:           mem.name     || 'Membre',
+            role:             mem.role     || 'employe',
+            pin:              mem.pin_code || null,
           }).select()
           if (error) console.error('❌ INSERT FAIL:', 'equipe_membres', error)
           else console.log('✅ INSERT OK:', 'equipe_membres', memData)

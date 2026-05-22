@@ -167,23 +167,17 @@ create table if not exists couverts (
 );
 
 create table if not exists equipe_membres (
-  id          uuid default uuid_generate_v4() primary key,
-  owner_id    uuid references auth.users on delete cascade,
-  name        text not null,
-  email       text default '',
-  role        text not null default 'employe',
-  pin_code    text,
-  actif       boolean default true,
-  statut      text default 'actif',
-  formation   jsonb default '{}',
-  created_at  timestamptz default now()
+  id               uuid default uuid_generate_v4() primary key,
+  etablissement_id uuid references etablissements(id),
+  prenom           text not null,
+  role             text not null default 'employe',
+  pin              text,
+  created_at       timestamptz default now()
 );
--- Ensure all columns exist in case the table was created with an older schema
-alter table equipe_membres add column if not exists name      text;
-alter table equipe_membres add column if not exists email     text      default '';
-alter table equipe_membres add column if not exists actif     boolean   default true;
-alter table equipe_membres add column if not exists statut    text      default 'actif';
-alter table equipe_membres add column if not exists formation jsonb     default '{}';
+-- Ensure columns exist on existing tables (safe to re-run)
+alter table equipe_membres add column if not exists etablissement_id uuid;
+alter table equipe_membres add column if not exists prenom           text;
+alter table equipe_membres add column if not exists pin              text;
 
 create table if not exists haccp_zones (
   id               uuid default uuid_generate_v4() primary key,
@@ -298,13 +292,13 @@ create policy "etablissements_all" on etablissements
   using      (auth.uid() = owner_id)
   with check (auth.uid() = owner_id);
 
--- equipe_membres — accès par owner_id
+-- equipe_membres — accès via etablissement_id → etablissements.owner_id
 drop policy if exists "equipe_membres_all" on equipe_membres;
 drop policy if exists "Equipe owner"       on equipe_membres;
 create policy "equipe_membres_all" on equipe_membres
   for all
-  using      (auth.uid() = owner_id)
-  with check (auth.uid() = owner_id);
+  using      (etablissement_id in (select id from etablissements where owner_id = auth.uid()))
+  with check (etablissement_id in (select id from etablissements where owner_id = auth.uid()));
 
 -- lab_results — accès par user_id
 drop policy if exists "lab_results_all"    on lab_results;

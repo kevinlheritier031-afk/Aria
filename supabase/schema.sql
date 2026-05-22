@@ -203,16 +203,18 @@ alter table if exists profiles
 
 -- equipe_membres
 create table if not exists equipe_membres (
-  id          uuid default uuid_generate_v4() primary key,
-  owner_id    uuid references auth.users on delete cascade,
-  name        text not null,
-  role        text not null default 'employe',
-  pin_code    text,
-  created_at  timestamptz default now()
+  id               uuid default uuid_generate_v4() primary key,
+  etablissement_id uuid references etablissements(id),
+  prenom           text not null,
+  role             text not null default 'employe',
+  pin              text,
+  created_at       timestamptz default now()
 );
 alter table equipe_membres enable row level security;
-create policy if not exists "Equipe owner" on equipe_membres
-  for all using (auth.uid() = owner_id);
+create policy if not exists "equipe_membres_all" on equipe_membres
+  for all
+  using      (etablissement_id in (select id from etablissements where owner_id = auth.uid()))
+  with check (etablissement_id in (select id from etablissements where owner_id = auth.uid()));
 
 -- haccp_zones
 create table if not exists haccp_zones (
