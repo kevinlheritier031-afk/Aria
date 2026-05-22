@@ -143,12 +143,13 @@ export default function Onboarding({ user, onComplete }) {
   const [step,      setStep]      = useState(0)
   const [choices,   setChoices]   = useState([])
 
-  const apiHistory       = useRef([])
-  const bottomRef        = useRef(null)
-  const inputRef         = useRef(null)
-  const initialized      = useRef(false)
-  // Stores the real UUID from etablissements.id (NOT user.id)
+  const apiHistory         = useRef([])
+  const bottomRef          = useRef(null)
+  const inputRef           = useRef(null)
+  const initialized        = useRef(false)
   const etablissementIdRef = useRef(null)
+  // Cache du prénom collecté en step identity, réutilisé dans les upserts suivants
+  const userNameRef        = useRef('')
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -185,7 +186,8 @@ export default function Onboarding({ user, onComplete }) {
         EID = etab.id
         etablissementIdRef.current = EID
 
-        const userName = user.user_metadata?.name || user.user_metadata?.full_name || user.email?.split('@')[0] || ''
+        const userName = data.prenom || user.user_metadata?.name || user.user_metadata?.full_name || user.email?.split('@')[0] || ''
+        userNameRef.current = userName
         const { data: profileData, error: profileError } = await supabase
           .from('profiles')
           .upsert({
@@ -206,15 +208,17 @@ export default function Onboarding({ user, onComplete }) {
 
       // ── ROLE ──────────────────────────────────────────────────────────────
       if (stepName === 'role' && data.role) {
-        const roleKey = ROLE_MAP[data.role] || data.role.toLowerCase().replace(/\s+/g, '_')
+        const roleKey  = ROLE_MAP[data.role] || data.role.toLowerCase().replace(/\s+/g, '_')
+        const userName = userNameRef.current || user.user_metadata?.name || user.user_metadata?.full_name || user.email?.split('@')[0] || ''
         console.log('[Onboarding] → UPSERT profiles.role =', roleKey)
         const { error } = await supabase
           .from('profiles')
           .upsert({
-            id:    uid,
-            name:  user.user_metadata?.name || user.user_metadata?.full_name || user.email?.split('@')[0] || '',
-            email: user.email || '',
-            role:  roleKey,
+            id:           uid,
+            name:         userName,
+            display_name: userName,
+            email:        user.email || '',
+            role:         roleKey,
           }, { onConflict: 'id' })
         if (error) throw error
         console.log('[Onboarding] ✅ Rôle:', roleKey)
@@ -339,11 +343,13 @@ export default function Onboarding({ user, onComplete }) {
   async function executeComplete() {
     console.log('[Onboarding] 🎉 executeComplete')
     try {
+      const userName = userNameRef.current || user.user_metadata?.name || user.user_metadata?.full_name || user.email?.split('@')[0] || ''
       const { error } = await supabase
         .from('profiles')
         .upsert({
           id:                   user.id,
-          name:                 user.user_metadata?.name || user.user_metadata?.full_name || user.email?.split('@')[0] || '',
+          name:                 userName,
+          display_name:         userName,
           email:                user.email || '',
           onboarding_completed: true,
         }, { onConflict: 'id' })
