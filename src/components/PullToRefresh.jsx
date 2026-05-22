@@ -21,6 +21,9 @@ export default function PullToRefresh({ onRefresh, children }) {
   const containerRef = useRef(null)
   const startYRef    = useRef(null)   // null = gesture ignored
   const activeRef    = useRef(false)
+  const statusRef    = useRef('idle')
+
+  const setStatusBoth = useCallback(v => { statusRef.current = v; setStatus(v) }, [])
 
   const onTouchStart = useCallback(e => {
     if (!containerRef.current) return
@@ -50,7 +53,7 @@ export default function PullToRefresh({ onRefresh, children }) {
     activeRef.current = true
     const visual = Math.min(deltaY * RESISTANCE, MAX_PULL)
     setPullY(visual)
-    setStatus(visual >= THRESHOLD ? 'release' : 'pulling')
+    setStatusBoth(visual >= THRESHOLD ? 'release' : 'pulling')
 
     if (deltaY > 0 && scrollTop <= 0) e.preventDefault()
   }, [])
@@ -59,19 +62,19 @@ export default function PullToRefresh({ onRefresh, children }) {
     if (!activeRef.current) return
     activeRef.current = false
 
-    if (status === 'release') {
-      setStatus('refreshing')
+    if (statusRef.current === 'release') {
+      setStatusBoth('refreshing')
       setPullY(48)
       try { await onRefresh() } finally {
-        setStatus('idle')
+        setStatusBoth('idle')
         setPullY(0)
       }
     } else {
-      setStatus('idle')
+      setStatusBoth('idle')
       setPullY(0)
     }
     startYRef.current = null
-  }, [status, onRefresh])
+  }, [onRefresh, setStatusBoth])
 
   const show   = status !== 'idle' || pullY > 0
   const passed = pullY >= THRESHOLD

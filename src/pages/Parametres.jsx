@@ -49,6 +49,83 @@ function Toast({ msg, type }) {
   )
 }
 
+function FourModal({ f, onSave, onDelete, onClose, saving }) {
+  const [nom,   setNom]   = useState(f.nom   || '')
+  const [mode,  setMode]  = useState(f.mode  || 'tel')
+  const [tel,   setTel]   = useState(f.tel   || '')
+  const [email, setEmail] = useState(f.email || '')
+  const [jours, setJours] = useState(f.jours || [])
+
+  const toggleJ = j => setJours(prev => prev.includes(j) ? prev.filter(x => x !== j) : [...prev, j])
+  const data    = { ...f, nom, mode, tel, email, jours }
+
+  return (
+    <div
+      style={{ position:'fixed', inset:0, zIndex:1000, display:'flex', flexDirection:'column', justifyContent:'flex-end', background:'rgba(15,23,42,.5)', backdropFilter:'blur(4px)' }}
+      onClick={onClose}
+    >
+      <div
+        style={{ background:'#fff', borderRadius:'24px 24px 0 0', padding:'24px 20px 40px', maxHeight:'85vh', overflowY:'auto', fontFamily:"'Plus Jakarta Sans','DM Sans',sans-serif" }}
+        onClick={e => e.stopPropagation()}
+      >
+        <div style={{ width:40, height:4, borderRadius:2, background:'#E2E8F0', margin:'0 auto 20px' }} />
+        <div style={{ fontSize:16, fontWeight:700, color:'#0F172A', marginBottom:18 }}>
+          {f.id ? 'Modifier le fournisseur' : 'Nouveau fournisseur'}
+        </div>
+
+        <label style={S.label}>Nom *</label>
+        <input value={nom} onChange={e => setNom(e.target.value)} style={{ ...S.input, marginBottom:12 }} placeholder="Nom du fournisseur" />
+
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:12 }}>
+          <div>
+            <label style={S.label}>Téléphone</label>
+            <input value={tel} onChange={e => setTel(e.target.value)} style={S.inputSm} placeholder="06 xx xx xx xx" />
+          </div>
+          <div>
+            <label style={S.label}>Email</label>
+            <input value={email} onChange={e => setEmail(e.target.value)} style={S.inputSm} placeholder="commandes@..." />
+          </div>
+        </div>
+
+        <label style={S.label}>Mode de commande</label>
+        <select value={mode} onChange={e => setMode(e.target.value)} style={{ ...S.input, marginBottom:12 }}>
+          <option value="tel">Téléphone</option>
+          <option value="email">Email</option>
+          <option value="site">Site web</option>
+          <option value="edi">EDI</option>
+        </select>
+
+        <label style={S.label}>Jours de livraison</label>
+        <div style={{ display:'flex', flexWrap:'wrap', gap:5, marginBottom:20 }}>
+          {JOURS.map(j => {
+            const active = jours.includes(j)
+            return (
+              <button key={j} onClick={() => toggleJ(j)} style={{ padding:'5px 10px', borderRadius:20, fontSize:12, fontWeight:500, cursor:'pointer', fontFamily:'inherit', border: active ? '1.5px solid #2563EB' : '1.5px solid #E2E8F0', background: active ? '#DBEAFE' : '#F8FAFC', color: active ? '#1D4ED8' : '#64748B' }}>
+                {j.slice(0,3)}
+              </button>
+            )
+          })}
+        </div>
+
+        <div style={{ display:'flex', gap:10 }}>
+          {f.id && (
+            <button onClick={() => onDelete(data)} style={{ ...S.btnGhost, color:'#EF4444', borderColor:'#FECACA', flex:1 }}>
+              Supprimer
+            </button>
+          )}
+          <button
+            onClick={() => onSave(data)}
+            disabled={!nom.trim() || saving}
+            style={{ ...S.btnPrimary, flex: f.id ? 2 : 1, opacity: (!nom.trim() || saving) ? .6 : 1 }}
+          >
+            {saving ? 'Enregistrement…' : 'Enregistrer'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 export default function Parametres({ user, profile: initProfile, setProfile, onLogout, fromDashboard, onBack }) {
@@ -74,6 +151,8 @@ export default function Parametres({ user, profile: initProfile, setProfile, onL
 
   // Fournisseurs
   const [fours,       setFours]       = useState([])
+  const [eid,         setEid]         = useState(null)
+  const [fourModal,   setFourModal]   = useState(null)
 
   // Business
   const [ticket,      setTicket]      = useState('')
@@ -109,6 +188,7 @@ export default function Parametres({ user, profile: initProfile, setProfile, onL
         if (etabRes.data) {
           const e = etabRes.data
           setEtab(e)
+          setEid(e.id || null)
           setEtabNom(e.nom || '')
           setEtabType(e.type || '')
           setEtabEmpl(e.nb_employes || '')
@@ -229,18 +309,21 @@ export default function Parametres({ user, profile: initProfile, setProfile, onL
         nom: f.nom, mode: f.mode || 'tel',
         tel: f.tel || null, email: f.email || null,
         jours: f.jours || [], heure_limite: f.heure_limite || '09:00',
-        user_id: user.id, etablissement_id: user.id,
+        user_id: user.id, etablissement_id: eid || user.id,
       }
+      console.log('EID fournisseur:', eid)
       if (f.id) {
         const { error } = await supabase.from('fournisseurs').update(payload).eq('id', f.id)
-        if (error) throw error
+        if (error) { console.error('❌ UPDATE FAIL fournisseur:', error); throw error }
+        setFours(prev => prev.map(x => x._uid === f._uid ? { ...x, ...payload } : x))
       } else {
         const { data, error } = await supabase.from('fournisseurs').insert(payload).select().single()
-        if (error) throw error
-        setFours(prev => prev.map(x => x._uid === f._uid ? { ...data, _uid: f._uid } : x))
+        if (error) { console.error('❌ INSERT FAIL fournisseur:', error); throw error }
+        setFours(prev => [...prev, { ...data, _uid: f._uid }])
       }
+      setFourModal(null)
       showToast(`Fournisseur "${f.nom}" enregistré`)
-    } catch { showToast('Erreur lors de la sauvegarde', 'error') }
+    } catch (err) { showToast(`Erreur : ${err?.message || 'sauvegarde impossible'}`, 'error') }
     endSave(key)
   }
 
@@ -254,6 +337,7 @@ export default function Parametres({ user, profile: initProfile, setProfile, onL
         if (f.id) await deleteFournisseur(f.id)
         setFours(prev => prev.filter(x => x._uid !== f._uid))
         setConfirm(null)
+        setFourModal(null)
         showToast('Fournisseur supprimé')
       },
     })
@@ -425,59 +509,32 @@ export default function Parametres({ user, profile: initProfile, setProfile, onL
         {fours.length === 0 && (
           <div style={{ fontSize:13, color:'#94A3B8', marginBottom:12 }}>Aucun fournisseur configuré.</div>
         )}
-        {fours.map(f => (
-          <div key={f._uid} style={{ background:'#F8FAFC', borderRadius:12, padding:'12px 14px', marginBottom:10, border:'1px solid #E2E8F0' }}>
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:8 }}>
-              <div>
-                <label style={{ ...S.label, marginBottom:3 }}>Nom</label>
-                <input value={f.nom} onChange={e => updateFour(f._uid, 'nom', e.target.value)} style={S.inputSm} placeholder="Nom du fournisseur" />
-              </div>
-              <div>
-                <label style={{ ...S.label, marginBottom:3 }}>Mode commande</label>
-                <select value={f.mode || 'tel'} onChange={e => updateFour(f._uid, 'mode', e.target.value)} style={S.inputSm}>
-                  <option value="tel">Téléphone</option>
-                  <option value="email">Email</option>
-                  <option value="edi">EDI</option>
-                  <option value="site">Site web</option>
-                </select>
-              </div>
-              <div>
-                <label style={{ ...S.label, marginBottom:3 }}>Téléphone</label>
-                <input value={f.tel || ''} onChange={e => updateFour(f._uid, 'tel', e.target.value)} style={S.inputSm} placeholder="06 xx xx xx xx" />
-              </div>
-              <div>
-                <label style={{ ...S.label, marginBottom:3 }}>Email</label>
-                <input value={f.email || ''} onChange={e => updateFour(f._uid, 'email', e.target.value)} style={S.inputSm} placeholder="commandes@..." />
-              </div>
-            </div>
-            <div style={{ marginBottom:8 }}>
-              <label style={{ ...S.label, marginBottom:4 }}>Jours de livraison</label>
-              <div style={{ display:'flex', flexWrap:'wrap', gap:5 }}>
-                {JOURS.map(j => {
-                  const active = (f.jours || []).includes(j)
-                  return (
-                    <button
-                      key={j}
-                      onClick={() => toggleJour(f._uid, j)}
-                      style={{ padding:'4px 9px', borderRadius:20, fontSize:11.5, fontWeight:500, cursor:'pointer', fontFamily:'inherit', border: active ? '1.5px solid #2563EB' : '1.5px solid #E2E8F0', background: active ? '#DBEAFE' : '#F8FAFC', color: active ? '#1D4ED8' : '#64748B' }}
-                    >
-                      {j.slice(0, 3)}
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-            <div style={{ display:'flex', gap:8, justifyContent:'flex-end' }}>
-              <button onClick={() => confirmDeleteFour(f)} style={{ ...S.btnGhost, fontSize:12, padding:'6px 12px', color:'#EF4444', borderColor:'#FECACA' }}>
-                Supprimer
+        {fours.length > 0 && (
+          <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:12 }}>
+            {fours.map(f => (
+              <button
+                key={f._uid}
+                onClick={() => setFourModal(f)}
+                style={{ display:'flex', alignItems:'center', gap:12, padding:'12px 14px', borderRadius:12, border:'1px solid #E2E8F0', background:'#F8FAFC', cursor:'pointer', textAlign:'left', fontFamily:'inherit', width:'100%' }}
+              >
+                <div style={{ width:40, height:40, borderRadius:'50%', background:'#EFF6FF', color:'#2563EB', display:'flex', alignItems:'center', justifyContent:'center', fontSize:17, fontWeight:700, flexShrink:0 }}>
+                  {(f.nom || '?')[0].toUpperCase()}
+                </div>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ fontSize:14, fontWeight:600, color:'#0F172A', marginBottom:2 }}>{f.nom || '—'}</div>
+                  <div style={{ fontSize:12, color:'#94A3B8', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                    {[f.tel, f.email].filter(Boolean).join(' · ') || 'Aucun contact'}
+                  </div>
+                </div>
+                <span style={{ fontSize:16, color:'#CBD5E1', flexShrink:0 }}>›</span>
               </button>
-              <button onClick={() => saveFour(f)} disabled={isSaving(`four_${f._uid}`)} style={{ ...S.btnPrimary, fontSize:12, padding:'6px 14px', opacity: isSaving(`four_${f._uid}`) ? .6 : 1 }}>
-                {isSaving(`four_${f._uid}`) ? '…' : 'Enregistrer'}
-              </button>
-            </div>
+            ))}
           </div>
-        ))}
-        <button onClick={addFour} style={{ ...S.btnGhost, fontSize:13, width:'100%' }}>
+        )}
+        <button
+          onClick={() => setFourModal({ _uid: Date.now(), id: null, nom: '', mode: 'tel', tel: '', email: '', jours: [], heure_limite: '09:00' })}
+          style={{ ...S.btnGhost, fontSize:13, width:'100%' }}
+        >
           + Ajouter un fournisseur
         </button>
       </div>
@@ -556,6 +613,15 @@ export default function Parametres({ user, profile: initProfile, setProfile, onL
         </div>
       </div>
 
+      {fourModal && (
+        <FourModal
+          f={fourModal}
+          onSave={saveFour}
+          onDelete={confirmDeleteFour}
+          onClose={() => setFourModal(null)}
+          saving={isSaving(`four_${fourModal._uid}`)}
+        />
+      )}
       {confirm && <ConfirmModal message={confirm.msg} confirmLabel={confirm.confirmLabel} onConfirm={confirm.onConfirm} onCancel={() => setConfirm(null)} />}
       {toast   && <Toast msg={toast.msg} type={toast.type} />}
     </div>
