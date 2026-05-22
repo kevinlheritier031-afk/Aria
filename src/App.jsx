@@ -27,8 +27,9 @@ const KNOWN_PAGES = new Set([...NAV_ITEMS.map(i => i.k), 'labo', 'parametres'])
 function resolveProfile(data, meta) {
   if (!data) return meta || null
   const metaName = meta?.name || meta?.full_name || meta?.display_name
-  const name = (data.name && data.name !== 'Utilisateur') ? data.name : (metaName || data.name)
-  return { ...data, name }
+  const name         = (data.name && data.name !== 'Utilisateur') ? data.name : (metaName || data.name)
+  const display_name = data.display_name || metaName || name || null
+  return { ...data, name, display_name }
 }
 
 // ─── Logout Confirm Modal ─────────────────────────────────────────────────────

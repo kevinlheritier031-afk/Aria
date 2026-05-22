@@ -180,16 +180,17 @@ export default function Onboarding({ user, onComplete }) {
           )
           .select('id')
           .single()
-        if (etabError) throw etabError
+        if (etabError) { console.error('❌ INSERT FAIL:', 'etablissements', etabError); throw etabError }
+        console.log('✅ INSERT OK:', 'etablissements', etab)
         EID = etab.id
         etablissementIdRef.current = EID
-        console.log('EID etablissement:', EID)
 
-        const { error: profileError } = await supabase
+        const { data: profileData, error: profileError } = await supabase
           .from('profiles')
           .upsert({ id: uid, etablissement_id: EID, role: 'proprietaire', onboarding_completed: false }, { onConflict: 'id' })
-        if (profileError) console.error('[Onboarding] profiles upsert error:', profileError)
-        else console.log('[Onboarding] ✅ profiles.etablissement_id =', EID)
+          .select()
+        if (profileError) console.error('❌ INSERT FAIL:', 'profiles', profileError)
+        else console.log('✅ INSERT OK:', 'profiles', profileData)
 
         addStatus('✓ Établissement enregistré')
       }
@@ -209,13 +210,14 @@ export default function Onboarding({ user, onComplete }) {
         if (!EID) throw new Error('EID manquant avant INSERT haccp_zones')
         console.log('[Onboarding] EID used (haccp_zones):', EID)
         for (const zone of data.zones) {
-          const { error } = await supabase.from('haccp_zones').insert({
+          const { data: hacData, error } = await supabase.from('haccp_zones').insert({
             etablissement_id: EID,
             nom:      zone.nom,
             temp_min: zone.temp_min,
             temp_max: zone.temp_max,
-          })
-          if (error) console.error('haccp_zones error:', error)
+          }).select()
+          if (error) console.error('❌ INSERT FAIL:', 'haccp_zones', error)
+          else console.log('✅ INSERT OK:', 'haccp_zones', hacData)
         }
         console.log('[Onboarding] ✅', data.zones.length, 'zone(s) HACCP')
         addStatus(`✓ ${data.zones.length} zone(s) HACCP enregistrée(s)`)
@@ -226,7 +228,7 @@ export default function Onboarding({ user, onComplete }) {
         if (!EID) throw new Error('EID manquant avant INSERT fournisseurs')
         console.log('[Onboarding] EID used (fournisseurs):', EID)
         for (const f of data.fournisseurs) {
-          const { error } = await supabase.from('fournisseurs').insert({
+          const { data: fourData, error } = await supabase.from('fournisseurs').insert({
             etablissement_id: EID,
             user_id: uid,
             nom:   f.nom,
@@ -234,8 +236,9 @@ export default function Onboarding({ user, onComplete }) {
             tel:   f.tel   || null,
             email: f.email || null,
             jours: f.jours || [],
-          })
-          if (error) console.error('fournisseurs error:', error)
+          }).select()
+          if (error) console.error('❌ INSERT FAIL:', 'fournisseurs', error)
+          else console.log('✅ INSERT OK:', 'fournisseurs', fourData)
         }
         console.log('[Onboarding] ✅', data.fournisseurs.length, 'fournisseur(s)')
         addStatus(`✓ ${data.fournisseurs.length} fournisseur(s) enregistré(s)`)
@@ -249,10 +252,10 @@ export default function Onboarding({ user, onComplete }) {
           nom: p.nom, q: Number(p.q) || 0, u: p.u || 'unité', cat: p.cat || 'autre',
           user_id: uid, etablissement_id: EID,
         }))
-        const { error } = await supabase.from('stock').insert(items)
-        if (error) console.error('stock error:', error)
+        const { data: stockData, error } = await supabase.from('stock').insert(items).select()
+        if (error) console.error('❌ INSERT FAIL:', 'stock', error)
         else {
-          console.log('[Onboarding] ✅', items.length, 'produit(s)')
+          console.log('✅ INSERT OK:', 'stock', stockData)
           addStatus(`✓ ${items.length} produit(s) ajouté(s) au stock`)
         }
       }
@@ -262,14 +265,15 @@ export default function Onboarding({ user, onComplete }) {
         if (!EID) throw new Error('EID manquant avant INSERT recettes')
         console.log('[Onboarding] EID used (recettes):', EID)
         for (const r of data.recettes) {
-          const { error } = await supabase.from('recettes').insert({
+          const { data: recData, error } = await supabase.from('recettes').insert({
             etablissement_id: EID,
             user_id:     uid,
             nom:         r.nom,
             portions:    r.portions    || 1,
             ingredients: r.ingredients || [],
-          })
-          if (error) console.error('recettes error:', error)
+          }).select()
+          if (error) console.error('❌ INSERT FAIL:', 'recettes', error)
+          else console.log('✅ INSERT OK:', 'recettes', recData)
         }
         console.log('[Onboarding] ✅', data.recettes.length, 'recette(s)')
         addStatus(`✓ ${data.recettes.length} recette(s) enregistrée(s)`)
@@ -278,13 +282,14 @@ export default function Onboarding({ user, onComplete }) {
       // ── EQUIPE ────────────────────────────────────────────────────────────
       if (stepName === 'equipe' && !data.skipped && data.membres?.length) {
         for (const mem of data.membres) {
-          const { error } = await supabase.from('equipe_membres').insert({
+          const { data: memData, error } = await supabase.from('equipe_membres').insert({
             name:     mem.name,
             role:     mem.role     || 'employe',
             pin_code: mem.pin_code || '',
             owner_id: uid,
-          })
-          if (error) console.error('equipe_membres error:', error)
+          }).select()
+          if (error) console.error('❌ INSERT FAIL:', 'equipe_membres', error)
+          else console.log('✅ INSERT OK:', 'equipe_membres', memData)
         }
         console.log('[Onboarding] ✅', data.membres.length, 'membre(s)')
         addStatus(`✓ ${data.membres.length} membre(s) d'équipe enregistré(s)`)
