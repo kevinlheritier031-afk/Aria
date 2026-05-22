@@ -137,6 +137,12 @@ function TypingIndicator() {
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 export default function Onboarding({ user, onComplete }) {
+  const [phase,      setPhase]      = useState('password')
+  const [pwdVal,     setPwdVal]     = useState('')
+  const [pwdConfirm, setPwdConfirm] = useState('')
+  const [pwdError,   setPwdError]   = useState('')
+  const [pwdLoading, setPwdLoading] = useState(false)
+
   const [messages,  setMessages]  = useState([])
   const [input,     setInput]     = useState('')
   const [loading,   setLoading]   = useState(false)
@@ -404,6 +410,19 @@ export default function Onboarding({ user, onComplete }) {
     }
   }
 
+  // ── Password step ─────────────────────────────────────────────────────────────
+
+  async function handleSetPassword() {
+    setPwdError('')
+    if (pwdVal.length < 8) { setPwdError('Le mot de passe doit faire au moins 8 caractères.'); return }
+    if (pwdVal !== pwdConfirm) { setPwdError('Les mots de passe ne correspondent pas.'); return }
+    setPwdLoading(true)
+    const { error } = await supabase.auth.updateUser({ password: pwdVal })
+    setPwdLoading(false)
+    if (error) { setPwdError(error.message || 'Erreur lors de la mise à jour.'); return }
+    setPhase('chat')
+  }
+
   // ── Init ──────────────────────────────────────────────────────────────────────
 
   useEffect(() => {
@@ -437,10 +456,14 @@ export default function Onboarding({ user, onComplete }) {
 
   // ── Render ────────────────────────────────────────────────────────────────────
 
-  const progress  = Math.round((step / 8) * 100)
-  const stepLabel = step < 8
-    ? `Étape ${step + 1}/8 — ${STEP_LABELS[STEPS[step]] || ''}`
-    : '✓ Configuration terminée !'
+  const progress  = phase === 'password'
+    ? 0
+    : Math.round((step + 1) / 9 * 100)
+  const stepLabel = phase === 'password'
+    ? 'Étape 1/9 — 🔐 Mot de passe'
+    : step < 8
+      ? `Étape ${step + 2}/9 — ${STEP_LABELS[STEPS[step]] || ''}`
+      : '✓ Configuration terminée !'
 
   return (
     <div style={{ display:'flex', flexDirection:'column', height:'100dvh', background:'#F8FAFC', fontFamily:"'Plus Jakarta Sans','DM Sans',sans-serif", overflow:'hidden' }}>
@@ -459,53 +482,114 @@ export default function Onboarding({ user, onComplete }) {
         </div>
       </div>
 
-      {/* Chat */}
-      <div style={{ flex:1, overflowY:'auto', padding:'14px 12px 6px' }}>
-        {messages.map((m, i) => (
-          m.role === 'status'
-            ? <Bubble key={i} isStatus isError={m.isError}>{m.content}</Bubble>
-            : <Bubble key={i} isAria={m.role === 'assistant'}>{m.content}</Bubble>
-        ))}
-        {loading && <TypingIndicator />}
-        <div ref={bottomRef} style={{ height:4 }} />
-      </div>
+      {phase === 'password' ? (
 
-      {/* Quick choices */}
-      {choices.length > 0 && !loading && (
-        <div style={{ padding:'6px 14px 4px', display:'flex', flexWrap:'wrap', gap:7, background:'#F8FAFC', flexShrink:0 }}>
-          {choices.map((c, i) => (
-            <button
-              key={i}
-              onClick={() => send(c)}
-              style={{ padding:'7px 14px', borderRadius:20, border:'1.5px solid #DBEAFE', background:'#EFF6FF', color:'#2563EB', fontSize:12.5, fontWeight:500, cursor:'pointer', fontFamily:'inherit' }}
-            >
-              {c}
-            </button>
-          ))}
+        /* ── Étape 0 : création du mot de passe ── */
+        <div style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'24px 20px' }}>
+          <div style={{ width:'100%', maxWidth:400, display:'flex', flexDirection:'column', gap:20 }}>
+
+            {/* Aria bubble */}
+            <div style={{ display:'flex', gap:10, alignItems:'flex-start' }}>
+              <div style={{ width:34, height:34, borderRadius:'50%', background:'linear-gradient(135deg,#2563EB,#7C3AED)', display:'flex', alignItems:'center', justifyContent:'center', color:'#fff', fontSize:14, flexShrink:0, marginTop:2 }}>✦</div>
+              <div style={{ padding:'11px 15px', borderRadius:'4px 16px 16px 16px', background:'#F1F5F9', fontSize:14, lineHeight:1.55, color:'#1E293B' }}>
+                Bienvenue ! Avant de commencer, créez votre mot de passe pour vous connecter à l'avenir.
+              </div>
+            </div>
+
+            {/* Form */}
+            <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+              <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
+                <label style={{ fontSize:12, fontWeight:600, color:'#475569' }}>Mot de passe</label>
+                <input
+                  type="password"
+                  value={pwdVal}
+                  onChange={e => setPwdVal(e.target.value)}
+                  placeholder="Minimum 8 caractères"
+                  autoFocus
+                  style={{ padding:'10px 14px', borderRadius:10, border:'1.5px solid #E2E8F0', fontSize:14, fontFamily:'inherit', outline:'none', background:'#F8FAFC', color:'#0F172A', boxSizing:'border-box', width:'100%' }}
+                />
+              </div>
+              <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
+                <label style={{ fontSize:12, fontWeight:600, color:'#475569' }}>Confirmer le mot de passe</label>
+                <input
+                  type="password"
+                  value={pwdConfirm}
+                  onChange={e => setPwdConfirm(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') handleSetPassword() }}
+                  placeholder="Répétez votre mot de passe"
+                  style={{ padding:'10px 14px', borderRadius:10, border:'1.5px solid #E2E8F0', fontSize:14, fontFamily:'inherit', outline:'none', background:'#F8FAFC', color:'#0F172A', boxSizing:'border-box', width:'100%' }}
+                />
+              </div>
+
+              {pwdError && (
+                <div style={{ padding:'10px 14px', borderRadius:10, background:'#FEF2F2', border:'1px solid #FECACA', color:'#DC2626', fontSize:13 }}>
+                  {pwdError}
+                </div>
+              )}
+
+              <button
+                onClick={handleSetPassword}
+                disabled={pwdLoading}
+                style={{ padding:'13px', borderRadius:12, border:'none', background: pwdLoading ? '#E2E8F0' : 'linear-gradient(135deg,#2563EB,#1D4ED8)', color: pwdLoading ? '#94A3B8' : '#fff', fontSize:14, fontWeight:600, cursor: pwdLoading ? 'default' : 'pointer', fontFamily:'inherit' }}
+              >
+                {pwdLoading ? 'Enregistrement…' : 'Créer mon mot de passe →'}
+              </button>
+            </div>
+
+          </div>
         </div>
+
+      ) : (
+        <>
+          {/* Chat */}
+          <div style={{ flex:1, overflowY:'auto', padding:'14px 12px 6px' }}>
+            {messages.map((m, i) => (
+              m.role === 'status'
+                ? <Bubble key={i} isStatus isError={m.isError}>{m.content}</Bubble>
+                : <Bubble key={i} isAria={m.role === 'assistant'}>{m.content}</Bubble>
+            ))}
+            {loading && <TypingIndicator />}
+            <div ref={bottomRef} style={{ height:4 }} />
+          </div>
+
+          {/* Quick choices */}
+          {choices.length > 0 && !loading && (
+            <div style={{ padding:'6px 14px 4px', display:'flex', flexWrap:'wrap', gap:7, background:'#F8FAFC', flexShrink:0 }}>
+              {choices.map((c, i) => (
+                <button
+                  key={i}
+                  onClick={() => send(c)}
+                  style={{ padding:'7px 14px', borderRadius:20, border:'1.5px solid #DBEAFE', background:'#EFF6FF', color:'#2563EB', fontSize:12.5, fontWeight:500, cursor:'pointer', fontFamily:'inherit' }}
+                >
+                  {c}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Input */}
+          <div style={{ padding:'10px 14px 20px', background:'#fff', borderTop:'1px solid #E2E8F0', flexShrink:0 }}>
+            <div style={{ display:'flex', gap:8, alignItems:'flex-end' }}>
+              <textarea
+                ref={inputRef}
+                value={input}
+                onChange={e => setInput(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(input) } }}
+                placeholder="Répondez à Aria…"
+                rows={1}
+                style={{ flex:1, padding:'10px 14px', borderRadius:12, border:'1.5px solid #E2E8F0', fontSize:13.5, fontFamily:'inherit', resize:'none', outline:'none', background:'#F8FAFC', color:'#1E293B', lineHeight:1.5, maxHeight:100, overflowY:'auto' }}
+              />
+              <button
+                onClick={() => send(input)}
+                disabled={!input.trim() || loading}
+                style={{ width:42, height:42, borderRadius:12, border:'none', background: input.trim() && !loading ? 'linear-gradient(135deg,#2563EB,#7C3AED)' : '#E2E8F0', color: input.trim() && !loading ? '#fff' : '#94A3B8', fontSize:18, cursor: input.trim() && !loading ? 'pointer' : 'default', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}
+              >
+                ↑
+              </button>
+            </div>
+          </div>
+        </>
       )}
-
-      {/* Input */}
-      <div style={{ padding:'10px 14px 20px', background:'#fff', borderTop:'1px solid #E2E8F0', flexShrink:0 }}>
-        <div style={{ display:'flex', gap:8, alignItems:'flex-end' }}>
-          <textarea
-            ref={inputRef}
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(input) } }}
-            placeholder="Répondez à Aria…"
-            rows={1}
-            style={{ flex:1, padding:'10px 14px', borderRadius:12, border:'1.5px solid #E2E8F0', fontSize:13.5, fontFamily:'inherit', resize:'none', outline:'none', background:'#F8FAFC', color:'#1E293B', lineHeight:1.5, maxHeight:100, overflowY:'auto' }}
-          />
-          <button
-            onClick={() => send(input)}
-            disabled={!input.trim() || loading}
-            style={{ width:42, height:42, borderRadius:12, border:'none', background: input.trim() && !loading ? 'linear-gradient(135deg,#2563EB,#7C3AED)' : '#E2E8F0', color: input.trim() && !loading ? '#fff' : '#94A3B8', fontSize:18, cursor: input.trim() && !loading ? 'pointer' : 'default', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}
-          >
-            ↑
-          </button>
-        </div>
-      </div>
 
       <style>{`
         @keyframes onb-bounce {
