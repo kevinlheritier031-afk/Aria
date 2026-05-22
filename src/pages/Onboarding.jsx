@@ -147,6 +147,9 @@ export default function Onboarding({ user, onComplete }) {
   const [pwdError,    setPwdError]    = useState('')
   const [pwdLoading,  setPwdLoading]  = useState(false)
 
+  const [showPwd,     setShowPwd]     = useState(false)
+  const [showPwdConf, setShowPwdConf] = useState(false)
+
   const [prenom,      setPrenom]      = useState('')
   const [nom,         setNom]         = useState('')
   const [nameError,   setNameError]   = useState('')
@@ -455,6 +458,7 @@ export default function Onboarding({ user, onComplete }) {
     }, { onConflict: 'id' })
     setNameLoading(false)
     if (error) { setNameError('Erreur : ' + error.message); return }
+    console.log('display_name sauvegardé:', displayName)
     setPhase('chat')
   }
 
@@ -551,25 +555,35 @@ export default function Onboarding({ user, onComplete }) {
             <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
               <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
                 <label style={{ fontSize:12, fontWeight:600, color:'#475569' }}>Mot de passe</label>
-                <input
-                  type="password"
-                  value={pwdVal}
-                  onChange={e => setPwdVal(e.target.value)}
-                  placeholder="Minimum 8 caractères"
-                  autoFocus
-                  style={{ padding:'10px 14px', borderRadius:10, border:'1.5px solid #E2E8F0', fontSize:14, fontFamily:'inherit', outline:'none', background:'#F8FAFC', color:'#0F172A', boxSizing:'border-box', width:'100%' }}
-                />
+                <div style={{ position:'relative' }}>
+                  <input
+                    type={showPwd ? 'text' : 'password'}
+                    value={pwdVal}
+                    onChange={e => setPwdVal(e.target.value)}
+                    placeholder="Minimum 8 caractères"
+                    autoFocus
+                    style={{ padding:'10px 40px 10px 14px', borderRadius:10, border:'1.5px solid #E2E8F0', fontSize:14, fontFamily:'inherit', outline:'none', background:'#F8FAFC', color:'#0F172A', boxSizing:'border-box', width:'100%' }}
+                  />
+                  <button type="button" onClick={() => setShowPwd(v => !v)} style={{ position:'absolute', right:10, top:'50%', transform:'translateY(-50%)', background:'none', border:'none', cursor:'pointer', fontSize:16, color:'#94A3B8', padding:2, lineHeight:1 }}>
+                    {showPwd ? '🙈' : '👁️'}
+                  </button>
+                </div>
               </div>
               <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
                 <label style={{ fontSize:12, fontWeight:600, color:'#475569' }}>Confirmer le mot de passe</label>
-                <input
-                  type="password"
-                  value={pwdConfirm}
-                  onChange={e => setPwdConfirm(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter') handleSetPassword() }}
-                  placeholder="Répétez votre mot de passe"
-                  style={{ padding:'10px 14px', borderRadius:10, border:'1.5px solid #E2E8F0', fontSize:14, fontFamily:'inherit', outline:'none', background:'#F8FAFC', color:'#0F172A', boxSizing:'border-box', width:'100%' }}
-                />
+                <div style={{ position:'relative' }}>
+                  <input
+                    type={showPwdConf ? 'text' : 'password'}
+                    value={pwdConfirm}
+                    onChange={e => setPwdConfirm(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') handleSetPassword() }}
+                    placeholder="Répétez votre mot de passe"
+                    style={{ padding:'10px 40px 10px 14px', borderRadius:10, border:'1.5px solid #E2E8F0', fontSize:14, fontFamily:'inherit', outline:'none', background:'#F8FAFC', color:'#0F172A', boxSizing:'border-box', width:'100%' }}
+                  />
+                  <button type="button" onClick={() => setShowPwdConf(v => !v)} style={{ position:'absolute', right:10, top:'50%', transform:'translateY(-50%)', background:'none', border:'none', cursor:'pointer', fontSize:16, color:'#94A3B8', padding:2, lineHeight:1 }}>
+                    {showPwdConf ? '🙈' : '👁️'}
+                  </button>
+                </div>
               </div>
 
               {/* Strength bar */}

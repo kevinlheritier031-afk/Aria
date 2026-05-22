@@ -1,5 +1,5 @@
 ﻿import { useState, useRef } from 'react'
-import { insertScan, upsertStock } from '../lib/supabase'
+import { insertScan, upsertStock, supabase } from '../lib/supabase'
 import { uid, fdate, ftime, dlcStatus } from '../constants'
 
 const CONF_OPTIONS = [
@@ -79,6 +79,7 @@ export default function Reception({ scanLog = [], setScanLog, stock = [], setSto
   const [saving,    setSaving]    = useState(false)
   const [error,     setError]     = useState('')
   const [saved,     setSaved]     = useState(false)
+  const [toast,     setToast]     = useState('')
 
   const galleryRef = useRef()
   const cameraRef  = useRef()
@@ -98,10 +99,14 @@ export default function Reception({ scanLog = [], setScanLog, stock = [], setSto
     setAnalyzing(true)
     setError('')
     try {
+      const { data: sessionData } = await supabase.auth.getSession()
+      const accessToken = sessionData?.session?.access_token
+      const etablissementId = profile?.etablissement_id ?? null
+
       const res = await fetch('/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image, userId: user.id }),
+        body: JSON.stringify({ image, userId: user.id, etablissementId, accessToken }),
       })
       if (!res.ok) throw new Error(`Erreur ${res.status}`)
       const data = await res.json()
@@ -109,6 +114,14 @@ export default function Reception({ scanLog = [], setScanLog, stock = [], setSto
       setProducts((data.produits || []).map(p => ({ ...p, _conf: 'a_verifier', id: uid() })))
       setConf(data.conf || 'a_verifier')
       setView('scan')
+
+      if (data.fournisseur && (data.fournisseur_cree === true || data.fournisseur_id)) {
+        const msg = data.fournisseur_cree
+          ? `Fournisseur "${data.fournisseur}" ajouté automatiquement ✅`
+          : `Fournisseur "${data.fournisseur}" reconnu ✅`
+        setToast(msg)
+        setTimeout(() => setToast(''), 4000)
+      }
     } catch (e) {
       setError(`Analyse échouée : ${e.message}`)
     }
@@ -232,6 +245,12 @@ export default function Reception({ scanLog = [], setScanLog, stock = [], setSto
 
   return (
     <div style={S.page}>
+      {/* Toast fournisseur */}
+      {toast && (
+        <div style={{ position:'fixed', bottom:24, left:'50%', transform:'translateX(-50%)', background:'#0F172A', color:'#fff', padding:'10px 20px', borderRadius:99, fontSize:13.5, fontWeight:600, zIndex:9999, boxShadow:'0 4px 20px rgba(0,0,0,.2)', whiteSpace:'nowrap' }}>
+          {toast}
+        </div>
+      )}
       {fromDashboard && (
         <button style={S.backBtn} onClick={onBack}>← Retour</button>
       )}

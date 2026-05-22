@@ -101,8 +101,8 @@ export default function Dashboard({ user, stock = [], scanLog = [], prixHist = [
 
   const recent = [...scanLog].slice(0, 5)
 
-  const rawName   = profile?.display_name || (profile?.name && profile.name !== 'Utilisateur' ? profile.name : null) || user?.email?.split('@')[0] || null
-  const firstName = rawName?.split(' ')[0] || 'Chef'
+  const rawName   = profile?.display_name || (profile?.name && profile.name !== 'Utilisateur' ? profile.name : null) || null
+  const firstName = rawName?.split(' ')[0] || (profile === null ? '…' : 'Chef')
   const hour = new Date().getHours()
   const greeting = hour < 12 ? 'Bonjour' : hour < 18 ? 'Bon après-midi' : 'Bonsoir'
 

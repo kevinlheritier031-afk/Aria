@@ -191,8 +191,13 @@ export async function upsertEtablissement(etab) {
   return { data, error };
 }
 
+export async function fetchHaccpZones(etablissementId) {
+  const { data, error } = await supabase.from('haccp_zones').select('*').eq('etablissement_id', etablissementId).order('nom')
+  return { data, error }
+}
+
 export async function insertHaccpZone(zone) {
-  const { data, error } = await supabase.from('haccp_zones').insert(zone);
+  const { data, error } = await supabase.from('haccp_zones').insert(zone).select();
   return { data, error };
 }
 

@@ -440,6 +440,7 @@ export default function App() {
             {page === 'haccp' && (
               <Haccp
                 user={user}
+                profile={profile}
                 scanLog={scanLog}
                 fromDashboard={navSource === 'dashboard'}
                 onBack={handleBack}

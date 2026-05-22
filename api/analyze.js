@@ -1,9 +1,40 @@
 // POST /api/analyze
-// Body: { image: string (base64 pur, sans préfixe data:), userId: string }
-// Returns: { fournisseur, date, total, nb, conf, produits: [...] }
+// Body: { image: string (base64 pur, sans préfixe data:), userId: string, etablissementId?: string, accessToken?: string }
+// Returns: { fournisseur, date, total, nb, conf, produits: [...], fournisseur_cree?: bool, fournisseur_id?: string }
+
+import { createClient } from '@supabase/supabase-js'
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages'
 const MODEL         = 'claude-sonnet-4-6'
+
+function getSupabase(accessToken) {
+  const url = process.env.VITE_SUPABASE_URL
+  const key = process.env.VITE_SUPABASE_ANON_KEY
+  if (!url || !key) return null
+  return createClient(url, key, accessToken
+    ? { global: { headers: { Authorization: `Bearer ${accessToken}` } } }
+    : {}
+  )
+}
+
+async function upsertFournisseur({ nom, etablissementId, userId, accessToken }) {
+  const sb = getSupabase(accessToken)
+  if (!sb || !nom || !etablissementId) return {}
+  const { data: existing } = await sb
+    .from('fournisseurs')
+    .select('id')
+    .eq('etablissement_id', etablissementId)
+    .ilike('nom', nom)
+    .maybeSingle()
+  if (existing) return { fournisseur_cree: false, fournisseur_id: existing.id }
+  const { data, error } = await sb
+    .from('fournisseurs')
+    .insert({ nom, etablissement_id: etablissementId, user_id: userId, mode: 'tel' })
+    .select('id')
+    .single()
+  if (error) { console.error('❌ INSERT fournisseur:', error); return {} }
+  return { fournisseur_cree: true, fournisseur_id: data.id }
+}
 
 // Détecte le type MIME depuis les premiers octets base64
 function detectMediaType(b64) {
@@ -68,7 +99,7 @@ export default async function handler(req, res) {
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) return res.status(500).json({ error: 'ANTHROPIC_API_KEY manquante' })
 
-  const { image, userId } = req.body ?? {}
+  const { image, userId, etablissementId, accessToken } = req.body ?? {}
   if (!image) return res.status(400).json({ error: 'Champ "image" manquant' })
 
   const mediaType = detectMediaType(image)
@@ -120,7 +151,14 @@ export default async function handler(req, res) {
     }
 
     const parsed = JSON.parse(match[0])
-    return res.status(200).json(parsed)
+
+    // Auto-upsert fournisseur if recognized
+    let fourExtra = {}
+    if (parsed.fournisseur && etablissementId) {
+      fourExtra = await upsertFournisseur({ nom: parsed.fournisseur, etablissementId, userId, accessToken })
+    }
+
+    return res.status(200).json({ ...parsed, ...fourExtra })
 
   } catch (err) {
     console.error('analyze error:', err)

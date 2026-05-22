@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
-import { fetchTemperatures, insertTemperature } from '../lib/supabase'
-import { uid, fdate, ftime } from '../constants'
+import { fetchTemperatures, insertTemperature, fetchHaccpZones, insertHaccpZone } from '../lib/supabase'
+import { fdate, ftime } from '../constants'
 
-const ZONES = [
+// Static zones kept as fallback for historical records + display lookup
+const STATIC_ZONES = [
   { k:'frigo',           l:'Réfrigération',       icon:'🧊', norm:'≤ 4°C',          check: v => v <= 4,  min:-30, max:30  },
   { k:'etuve',           l:'Étuve / Bain-marie',  icon:'♨️', norm:'≥ 63°C',         check: v => v >= 63, min:30,  max:120 },
   { k:'reception',       l:'Réception froide',    icon:'📦', norm:'≤ 8°C',           check: v => v <= 8,  min:-30, max:30  },
@@ -66,6 +67,48 @@ const S = {
   btnSm:      { display:'flex', alignItems:'center', justifyContent:'center', gap:4, padding:'6px 12px', borderRadius:8, fontWeight:600, fontSize:13, cursor:'pointer', border:'none', fontFamily:F },
 }
 
+// ── Helpers ────────────────────────────────────────────────────────────────────
+
+function guessIcon(nom) {
+  const n = (nom || '').toLowerCase()
+  if (n.includes('frigo') || n.includes('réfrig') || n.includes('refrig')) return '🧊'
+  if (n.includes('étuve') || n.includes('etuve') || n.includes('bain')) return '♨️'
+  if (n.includes('récep') || n.includes('recep')) return '📦'
+  if (n.includes('refroid')) return '❄️'
+  if (n.includes('plat') || n.includes('chaud')) return '🍽️'
+  if (n.includes('congél') || n.includes('congel')) return '🥶'
+  return '🌡️'
+}
+
+function buildNorm(min, max) {
+  if (min !== null && min !== undefined && max !== null && max !== undefined) return `${min}° à ${max}°C`
+  if (min !== null && min !== undefined) return `≥ ${min}°C`
+  if (max !== null && max !== undefined) return `≤ ${max}°C`
+  return '—'
+}
+
+function buildCheck(min, max) {
+  return v => (min === null || min === undefined || v >= min) && (max === null || max === undefined || v <= max)
+}
+
+function dbZoneToActive(z) {
+  return {
+    k:     z.id,
+    l:     z.nom,
+    icon:  guessIcon(z.nom),
+    norm:  buildNorm(z.temp_min, z.temp_max),
+    check: buildCheck(z.temp_min, z.temp_max),
+    min:   -30,
+    max:   120,
+  }
+}
+
+function findZone(contexte, activeZones) {
+  return activeZones.find(z => z.k === contexte)
+    || STATIC_ZONES.find(z => z.k === contexte)
+    || { l: contexte || '—', icon:'🌡️', norm:'' }
+}
+
 // ── Conformité indicator ───────────────────────────────────────────────────────
 
 function TempIndicator({ value, zone }) {
@@ -87,7 +130,7 @@ function TempIndicator({ value, zone }) {
 
 // ── Alert banner ───────────────────────────────────────────────────────────────
 
-function AlertBanner({ releves }) {
+function AlertBanner({ releves, activeZones }) {
   const recent = releves.filter(r => {
     if (r.conforme !== false) return false
     const dt = new Date(r.created_at)
@@ -103,7 +146,7 @@ function AlertBanner({ releves }) {
         </div>
         <div style={{ display:'flex', flexDirection:'column', gap:2 }}>
           {recent.slice(0, 3).map(r => {
-            const z = ZONES.find(z => z.k === r.contexte) || { l: r.contexte, icon:'🌡️' }
+            const z = findZone(r.contexte, activeZones)
             return (
               <div key={r.id} style={{ fontSize:12, color:'#991B1B' }}>
                 {z.icon} {z.l} — {r.valeur}°C (norme : {z.norm}) à {r.created_at?.slice(11,16)}
@@ -118,8 +161,8 @@ function AlertBanner({ releves }) {
 
 // ── Relevé row ─────────────────────────────────────────────────────────────────
 
-function RelRow({ rel }) {
-  const zone = ZONES.find(z => z.k === rel.contexte) || { l: rel.contexte || '—', icon:'🌡️', norm:'' }
+function RelRow({ rel, activeZones }) {
+  const zone = findZone(rel.contexte, activeZones)
   const ok   = rel.conforme === true
   const nc   = rel.conforme === false
   return (
@@ -172,22 +215,100 @@ function RapportCard({ rapport }) {
   )
 }
 
+// ── Add zone form ──────────────────────────────────────────────────────────────
+
+function AddZoneForm({ etablissementId, onCreated, onCancel }) {
+  const [nom,    setNom]    = useState('')
+  const [tMin,   setTMin]   = useState('')
+  const [tMax,   setTMax]   = useState('')
+  const [saving, setSaving] = useState(false)
+  const [err,    setErr]    = useState('')
+
+  async function handleSubmit() {
+    if (!nom.trim()) { setErr('Le nom est requis.'); return }
+    setSaving(true)
+    setErr('')
+    const zone = {
+      etablissement_id: etablissementId,
+      nom:      nom.trim(),
+      temp_min: tMin !== '' ? Number(tMin) : null,
+      temp_max: tMax !== '' ? Number(tMax) : null,
+    }
+    const { data, error } = await insertHaccpZone(zone)
+    setSaving(false)
+    if (error) { console.error('❌ INSERT FAIL: haccp_zones', error); setErr(error.message); return }
+    console.log('✅ INSERT OK: haccp_zones', data)
+    onCreated(data?.[0] || { ...zone, id: crypto.randomUUID() })
+  }
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+      <div style={{ fontSize:13.5, fontWeight:600, color:'#0F172A', marginBottom:2 }}>Nouvelle zone HACCP</div>
+      <input
+        style={S.input}
+        placeholder="Nom de la zone (ex : Chambre froide, Friteuse…)"
+        value={nom}
+        onChange={e => setNom(e.target.value)}
+        autoFocus
+      />
+      <div style={{ display:'flex', gap:8 }}>
+        <div style={{ flex:1 }}>
+          <div style={{ fontSize:11.5, color:'#64748B', marginBottom:4 }}>Temp. min (°C)</div>
+          <input style={S.input} type="number" placeholder="ex : -18" value={tMin} onChange={e => setTMin(e.target.value)} />
+        </div>
+        <div style={{ flex:1 }}>
+          <div style={{ fontSize:11.5, color:'#64748B', marginBottom:4 }}>Temp. max (°C)</div>
+          <input style={S.input} type="number" placeholder="ex : 4" value={tMax} onChange={e => setTMax(e.target.value)} />
+        </div>
+      </div>
+      {err && <div style={{ fontSize:12.5, color:'#DC2626' }}>{err}</div>}
+      <div style={{ display:'flex', gap:8 }}>
+        <button onClick={handleSubmit} disabled={saving} style={{ ...S.saveBtn, flex:1, opacity: saving ? .6 : 1 }}>
+          {saving ? 'Enregistrement…' : '+ Créer la zone'}
+        </button>
+        {onCancel && (
+          <button onClick={onCancel} style={{ ...S.btn, background:'#F1F5F9', color:'#475569', flex:'0 0 auto', padding:'12px 16px' }}>
+            Annuler
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ── Main component ─────────────────────────────────────────────────────────────
 
-export default function Haccp({ user, scanLog = [], fromDashboard = false, onBack }) {
-  const [tab,        setTab]        = useState('temperatures')
-  const [zone,       setZone]       = useState('frigo')
-  const [valeur,     setValeur]     = useState('')
-  const [note,       setNote]       = useState('')
-  const [saving,     setSaving]     = useState(false)
-  const [releves,    setReleves]    = useState([])
-  const [loading,    setLoading]    = useState(true)
-  const [rapports,   setRapports]   = useState([])
-  const [generating, setGenerating] = useState(false)
-  const [filterZone, setFilterZone] = useState('all')
+export default function Haccp({ user, profile, scanLog = [], fromDashboard = false, onBack }) {
+  const [tab,         setTab]         = useState('temperatures')
+  const [zone,        setZone]        = useState(null)
+  const [valeur,      setValeur]      = useState('')
+  const [note,        setNote]        = useState('')
+  const [saving,      setSaving]      = useState(false)
+  const [releves,     setReleves]     = useState([])
+  const [loading,     setLoading]     = useState(true)
+  const [rapports,    setRapports]    = useState([])
+  const [generating,  setGenerating]  = useState(false)
+  const [filterZone,  setFilterZone]  = useState('all')
 
-  const currentZone = ZONES.find(z => z.k === zone) || ZONES[0]
+  const [dbZones,     setDbZones]     = useState([])
+  const [zonesLoaded, setZonesLoaded] = useState(false)
+  const [showAddZone, setShowAddZone] = useState(false)
 
+  const eid = profile?.etablissement_id
+
+  // Fetch DB zones
+  useEffect(() => {
+    if (!eid) { setZonesLoaded(true); return }
+    fetchHaccpZones(eid).then(({ data, error }) => {
+      if (error) console.error('❌ fetchHaccpZones:', error)
+      const zones = data || []
+      setDbZones(zones)
+      setZonesLoaded(true)
+      if (zones.length > 0 && !zone) setZone(zones[0].id)
+    })
+  }, [eid])
+
+  // Fetch temperatures
   useEffect(() => {
     if (!user?.id) { setLoading(false); return }
     fetchTemperatures(user.id).then(({ data }) => {
@@ -196,22 +317,45 @@ export default function Haccp({ user, scanLog = [], fromDashboard = false, onBac
     })
   }, [user])
 
+  // Active zones: DB zones if available, else static fallback
+  const activeZones = dbZones.length > 0
+    ? dbZones.map(dbZoneToActive)
+    : STATIC_ZONES
+
+  // Set default zone when activeZones are ready
+  useEffect(() => {
+    if (!zone && activeZones.length > 0) setZone(activeZones[0].k)
+  }, [activeZones.length])
+
+  const currentZone = activeZones.find(z => z.k === zone) || activeZones[0] || STATIC_ZONES[0]
+
   async function handleSave() {
     const v = Number(valeur)
-    if (isNaN(v)) return
+    if (isNaN(v) || !currentZone) return
     setSaving(true)
     const conforme = currentZone.check(v)
     const rel = {
-      id: uid(), user_id: user.id,
-      valeur: v, contexte: zone, conforme,
+      id: crypto.randomUUID(),
+      user_id: user.id,
+      valeur: v,
+      contexte: zone,
+      conforme,
       note: note.trim() || null,
       created_at: new Date().toISOString(),
     }
-    await insertTemperature(rel)
+    const { error } = await insertTemperature(rel)
+    if (error) { console.error('❌ INSERT FAIL: temperatures', error); setSaving(false); return }
+    console.log('✅ INSERT OK: temperatures', rel)
     setReleves(rs => [rel, ...rs])
     setValeur('')
     setNote('')
     setSaving(false)
+  }
+
+  function handleZoneCreated(newZone) {
+    setDbZones(prev => [...prev, newZone])
+    setZone(newZone.id)
+    setShowAddZone(false)
   }
 
   async function handleGenerateReport() {
@@ -221,7 +365,7 @@ export default function Haccp({ user, scanLog = [], fromDashboard = false, onBac
       const nc     = releves.filter(r => r.conforme === false)
       const conf   = releves.filter(r => r.conforme === true).length
       const ncList = nc.slice(0, 8).map(r => {
-        const z = ZONES.find(z => z.k === r.contexte) || { l: r.contexte }
+        const z = findZone(r.contexte, activeZones)
         return `${z.l}: ${r.valeur}°C (norme: ${z.norm})`
       })
       const scanNc = scanLog.filter(s => s.conf === 'non_conforme').length
@@ -240,7 +384,7 @@ export default function Haccp({ user, scanLog = [], fromDashboard = false, onBac
 
       if (data.reply) {
         setRapports(prev => [{
-          id:      uid(),
+          id:      crypto.randomUUID(),
           date:    new Date().toISOString(),
           contenu: data.reply,
           stats:   { total, conf, nc: nc.length },
@@ -296,7 +440,7 @@ export default function Haccp({ user, scanLog = [], fromDashboard = false, onBac
       {tab === 'temperatures' && (
         <>
           {/* Alert banner */}
-          <AlertBanner releves={releves} />
+          <AlertBanner releves={releves} activeZones={activeZones} />
 
           {/* KPIs */}
           <div style={S.kpiRow}>
@@ -316,54 +460,92 @@ export default function Haccp({ user, scanLog = [], fromDashboard = false, onBac
 
           {/* Saisie */}
           <div style={S.card}>
-            <div style={S.cardTitle}>Nouveau relevé</div>
-
-            {/* Zone selector — 2 colonnes pour 5 zones */}
-            <div style={{ ...S.zoneGrid, gridTemplateColumns:'repeat(2,1fr)', gap:8, marginBottom:16 }}>
-              {ZONES.map(z => (
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14 }}>
+              <div style={S.cardTitle}>Nouveau relevé</div>
+              {eid && !showAddZone && (
                 <button
-                  key={z.k}
-                  style={{ ...S.zoneBtn, ...(zone === z.k ? S.zoneBtnAct : {}) }}
-                  onClick={() => setZone(z.k)}
+                  onClick={() => setShowAddZone(true)}
+                  style={{ ...S.btnSm, background:'#F1F5F9', color:'#475569', fontSize:12 }}
                 >
-                  <span style={{ fontSize:20 }}>{z.icon}</span>
-                  <span style={{ fontSize:11.5, fontWeight:600, color: zone === z.k ? '#2563EB' : '#0F172A', textAlign:'center', lineHeight:1.3 }}>{z.l}</span>
-                  <span style={{ fontSize:10, color:'#94A3B8' }}>{z.norm}</span>
+                  + Zone
                 </button>
-              ))}
+              )}
             </div>
 
-            {/* Temp input + indicator */}
-            <div style={S.tempRow}>
-              <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                <input
-                  style={S.tempInput}
-                  type="number" step="0.1"
-                  value={valeur}
-                  onChange={e => setValeur(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && valeur !== '' && handleSave()}
-                  placeholder="0.0"
-                  autoFocus
+            {/* Add zone inline form */}
+            {showAddZone && eid && (
+              <div style={{ marginBottom:16, padding:'14px 16px', background:'#F8FAFC', borderRadius:10, border:'1px solid #E2E8F0' }}>
+                <AddZoneForm
+                  etablissementId={eid}
+                  onCreated={handleZoneCreated}
+                  onCancel={() => setShowAddZone(false)}
                 />
-                <span style={S.tempUnit}>°C</span>
               </div>
-              <TempIndicator value={valeur} zone={currentZone} />
-            </div>
+            )}
 
-            <input
-              style={{ ...S.input, marginTop:10 }}
-              value={note}
-              onChange={e => setNote(e.target.value)}
-              placeholder="Note optionnelle (ex : frigo n°2, sonde étalonnée…)"
-            />
+            {/* No zones + no eid messages */}
+            {!eid && zonesLoaded && (
+              <div style={{ padding:'12px 14px', background:'#FFFBEB', border:'1px solid #FDE68A', borderRadius:10, fontSize:13, color:'#92400E', marginBottom:14 }}>
+                Profil non chargé — utilisez les zones standard.
+              </div>
+            )}
 
-            <button
-              style={{ ...S.saveBtn, opacity: saving || valeur === '' ? .6 : 1, marginTop:14 }}
-              onClick={handleSave}
-              disabled={saving || valeur === ''}
-            >
-              {saving ? 'Enregistrement…' : '+ Enregistrer ce relevé'}
-            </button>
+            {/* Zone selector */}
+            {!showAddZone && (
+              <>
+                <div style={{ ...S.zoneGrid, gridTemplateColumns:'repeat(2,1fr)', gap:8, marginBottom:16 }}>
+                  {activeZones.map(z => (
+                    <button
+                      key={z.k}
+                      style={{ ...S.zoneBtn, ...(zone === z.k ? S.zoneBtnAct : {}) }}
+                      onClick={() => setZone(z.k)}
+                    >
+                      <span style={{ fontSize:20 }}>{z.icon}</span>
+                      <span style={{ fontSize:11.5, fontWeight:600, color: zone === z.k ? '#2563EB' : '#0F172A', textAlign:'center', lineHeight:1.3 }}>{z.l}</span>
+                      <span style={{ fontSize:10, color:'#94A3B8' }}>{z.norm}</span>
+                    </button>
+                  ))}
+                  {/* Empty state: no zones yet */}
+                  {activeZones.length === 0 && zonesLoaded && (
+                    <div style={{ gridColumn:'1/-1', textAlign:'center', padding:'20px 0', color:'#94A3B8', fontSize:13 }}>
+                      Aucune zone configurée.
+                    </div>
+                  )}
+                </div>
+
+                {/* Temp input + indicator */}
+                <div style={S.tempRow}>
+                  <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                    <input
+                      style={S.tempInput}
+                      type="number" step="0.1"
+                      value={valeur}
+                      onChange={e => setValeur(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && valeur !== '' && handleSave()}
+                      placeholder="0.0"
+                      autoFocus
+                    />
+                    <span style={S.tempUnit}>°C</span>
+                  </div>
+                  {currentZone && <TempIndicator value={valeur} zone={currentZone} />}
+                </div>
+
+                <input
+                  style={{ ...S.input, marginTop:10 }}
+                  value={note}
+                  onChange={e => setNote(e.target.value)}
+                  placeholder="Note optionnelle (ex : frigo n°2, sonde étalonnée…)"
+                />
+
+                <button
+                  style={{ ...S.saveBtn, opacity: saving || valeur === '' ? .6 : 1, marginTop:14 }}
+                  onClick={handleSave}
+                  disabled={saving || valeur === ''}
+                >
+                  {saving ? 'Enregistrement…' : '+ Enregistrer ce relevé'}
+                </button>
+              </>
+            )}
           </div>
 
           {/* Historique */}
@@ -376,14 +558,20 @@ export default function Haccp({ user, scanLog = [], fromDashboard = false, onBac
                 style={{ fontSize:12, border:'1px solid #E2E8F0', borderRadius:7, padding:'4px 8px', fontFamily:F, color:'#475569', cursor:'pointer', outline:'none' }}
               >
                 <option value="all">Toutes zones</option>
-                {ZONES.map(z => <option key={z.k} value={z.k}>{z.l}</option>)}
+                {activeZones.map(z => <option key={z.k} value={z.k}>{z.l}</option>)}
+                {/* Also show static zone options for historical records */}
+                {dbZones.length > 0 && STATIC_ZONES.map(z => (
+                  releves.some(r => r.contexte === z.k)
+                    ? <option key={`static-${z.k}`} value={z.k}>{z.l} (ancien)</option>
+                    : null
+                ))}
               </select>
             </div>
             {loading
               ? <div style={S.empty}>Chargement…</div>
               : filteredReleves.length === 0
                 ? <div style={S.empty}>Aucun relevé enregistré.</div>
-                : filteredReleves.map(r => <RelRow key={r.id} rel={r} />)
+                : filteredReleves.map(r => <RelRow key={r.id} rel={r} activeZones={activeZones} />)
             }
           </div>
         </>
@@ -393,7 +581,6 @@ export default function Haccp({ user, scanLog = [], fromDashboard = false, onBac
 
       {tab === 'nettoyage' && (
         <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
-          {/* Placeholder card */}
           <div style={{ ...S.card, textAlign:'center', padding:'48px 32px' }}>
             <div style={{ fontSize:52, marginBottom:16 }}>🧹</div>
             <div style={{ fontSize:17, fontWeight:700, color:'#0F172A', marginBottom:8 }}>
@@ -407,7 +594,6 @@ export default function Haccp({ user, scanLog = [], fromDashboard = false, onBac
             </div>
           </div>
 
-          {/* Aria generate button — désactivé */}
           <div style={{ ...S.card, display:'flex', alignItems:'center', justifyContent:'space-between', gap:16 }}>
             <div>
               <div style={{ fontWeight:700, fontSize:14, color:'#0F172A' }}>✦ Générer avec Aria</div>
@@ -423,7 +609,6 @@ export default function Haccp({ user, scanLog = [], fromDashboard = false, onBac
             </button>
           </div>
 
-          {/* Zones preview */}
           <div style={S.card}>
             <div style={S.cardTitle}>Zones à planifier</div>
             {[
@@ -450,7 +635,6 @@ export default function Haccp({ user, scanLog = [], fromDashboard = false, onBac
 
       {tab === 'rapports' && (
         <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
-          {/* Generate + export row */}
           <div style={{ display:'flex', gap:10 }}>
             <button
               onClick={handleGenerateReport}
@@ -468,13 +652,11 @@ export default function Haccp({ user, scanLog = [], fromDashboard = false, onBac
             </button>
           </div>
 
-          {/* Export placeholder info */}
           <div style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 14px', background:'#FFFBEB', border:'1px solid #FDE68A', borderRadius:10 }}>
             <span style={{ fontSize:16 }}>💡</span>
             <span style={{ fontSize:13, color:'#92400E' }}>L'export PDF sera disponible prochainement. Vous pourrez imprimer vos rapports pour les contrôles officiels.</span>
           </div>
 
-          {/* Rapports list */}
           {rapports.length === 0 ? (
             <div style={{ ...S.card, textAlign:'center', padding:'40px 24px' }}>
               <div style={{ fontSize:40, marginBottom:12 }}>📊</div>
@@ -485,7 +667,6 @@ export default function Haccp({ user, scanLog = [], fromDashboard = false, onBac
             rapports.map(r => <RapportCard key={r.id} rapport={r} />)
           )}
 
-          {/* Conformité réceptions */}
           <div style={S.card}>
             <div style={S.cardTitle}>Conformité des réceptions ({scanLog.length})</div>
             {scanLog.length === 0 ? (

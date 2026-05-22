@@ -158,6 +158,21 @@ const TOOLS_DEFINITION = [
     },
   },
   {
+    name: 'upsert_fournisseur',
+    description: 'Créer ou mettre à jour un fournisseur par nom',
+    input_schema: {
+      type: 'object',
+      properties: {
+        nom:       { type: 'string', description: 'Nom du fournisseur' },
+        adresse:   { type: 'string' },
+        telephone: { type: 'string' },
+        email:     { type: 'string' },
+        siret:     { type: 'string' },
+      },
+      required: ['nom'],
+    },
+  },
+  {
     name: 'lire_temperatures',
     description: 'Lire l\'historique des températures (50 dernières)',
     input_schema: { type: 'object', properties: {}, required: [] },
@@ -280,6 +295,17 @@ async function executeTool(name, input, { userId, accessToken }) {
     case 'modifier_fournisseur': {
       const { id, champ, valeur } = input
       const { data, error } = await sb.from('fournisseurs').update({ [champ]: valeur }).eq('id', id).select()
+      return error ? { error: error.message } : (data || [])
+    }
+    case 'upsert_fournisseur': {
+      const { nom, ...rest } = input
+      const { data: existing } = await sb.from('fournisseurs').select('id').eq('user_id', userId).ilike('nom', nom).maybeSingle()
+      if (existing) {
+        const updates = Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined))
+        const { data, error } = await sb.from('fournisseurs').update({ nom, ...updates }).eq('id', existing.id).select()
+        return error ? { error: error.message } : (data || [])
+      }
+      const { data, error } = await sb.from('fournisseurs').insert({ nom, ...rest, user_id: userId, mode: 'tel' }).select()
       return error ? { error: error.message } : (data || [])
     }
     case 'lire_temperatures': {

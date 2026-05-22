@@ -24,8 +24,8 @@ export default function TopBar({ profile, onAvatarClick }) {
   useEffect(() => { setMounted(true) }, [])
 
   const name     = profile?.display_name || (profile?.name && profile.name !== 'Utilisateur' ? profile.name : '') || ''
-  const role     = profile?.role || 'employe'
-  const roleInfo = ROLES[role] || ROLES.employe
+  const role     = profile?.role || null
+  const roleInfo = role ? (ROLES[role] || ROLES.employe) : { color: '#94A3B8' }
   const letters  = name ? initials(name) : '?'
 
   return (
