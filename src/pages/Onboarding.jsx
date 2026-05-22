@@ -198,8 +198,10 @@ export default function Onboarding({ user, onComplete }) {
       // ── ROLE ──────────────────────────────────────────────────────────────
       if (stepName === 'role' && data.role) {
         const roleKey = ROLE_MAP[data.role] || data.role.toLowerCase().replace(/\s+/g, '_')
-        console.log('[Onboarding] → UPDATE profiles.role =', roleKey)
-        const { error } = await supabase.from('profiles').update({ role: roleKey }).eq('id', uid)
+        console.log('[Onboarding] → UPSERT profiles.role =', roleKey)
+        const { error } = await supabase
+          .from('profiles')
+          .upsert({ id: uid, role: roleKey }, { onConflict: 'id' })
         if (error) throw error
         console.log('[Onboarding] ✅ Rôle:', roleKey)
         addStatus('✓ Rôle enregistré')
@@ -324,8 +326,7 @@ export default function Onboarding({ user, onComplete }) {
     try {
       const { error } = await supabase
         .from('profiles')
-        .update({ onboarding_completed: true })
-        .eq('id', user.id)
+        .upsert({ id: user.id, onboarding_completed: true }, { onConflict: 'id' })
       if (error) throw error
       console.log('[Onboarding] ✅ onboarding_completed = true')
     } catch (err) {
