@@ -122,10 +122,11 @@ export default function Reception({ scanLog = [], setScanLog, stock = [], setSto
   async function handleSave() {
     if (!result) return
     setSaving(true)
+    setError('')
     const nonConf = products.filter(p => p._conf === 'non_conforme').length
     const finalConf = nonConf > 0 ? 'non_conforme' : products.every(p => p._conf === 'conforme') ? 'conforme' : 'a_verifier'
     const etablissementId = profile?.etablissement_id ?? null
-    if (!etablissementId) { setSaving(false); setError('Établissement non chargé, réessayez.'); return }
+    if (!etablissementId) console.warn('[Reception] ⚠️ etablissement_id null — scan sans liaison établissement')
 
     const scan = {
       id: uid(), user_id: user.id, etablissement_id: etablissementId,
@@ -137,7 +138,14 @@ export default function Reception({ scanLog = [], setScanLog, stock = [], setSto
       date_scan: fdate(),
       data_json: result,
     }
-    const { data } = await insertScan(scan)
+    const { error: scanError } = await insertScan(scan)
+    if (scanError) {
+      console.error('❌ INSERT FAIL:', 'scans', scanError)
+      setError('Erreur enregistrement scan : ' + scanError.message)
+      setSaving(false)
+      return
+    }
+    console.log('✅ INSERT OK:', 'scans', scan)
     setScanLog(s => [scan, ...s])
 
     // Add products to stock
@@ -148,7 +156,14 @@ export default function Reception({ scanLog = [], setScanLog, stock = [], setSto
       cat: p.cat || 'autre', four: result.fournisseur || '',
       lot: p.lot || null, date_reception: fdate(), st: p._conf,
     }))
-    await upsertStock(stockItems)
+    const { error: stockError } = await upsertStock(stockItems)
+    if (stockError) {
+      console.error('❌ INSERT FAIL:', 'stock', stockError)
+      setError('Scan enregistré — erreur ajout stock : ' + stockError.message)
+      setSaving(false)
+      return
+    }
+    console.log('✅ INSERT OK:', 'stock', stockItems)
     setStock(s => [...stockItems, ...s])
 
     setSaving(false)

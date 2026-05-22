@@ -191,7 +191,12 @@ function RecetteForm({ initial, onSave, onCancel, user, profile }) {
     }
     const { error } = await upsertRecette(payload)
     setSaving(false)
-    if (error) { setFormError('Erreur : ' + error.message); return }
+    if (error) {
+      console.error('❌ INSERT FAIL:', 'recettes', error)
+      setFormError('Erreur : ' + error.message)
+      return
+    }
+    console.log('✅ INSERT OK:', 'recettes', payload)
     onSave(payload)
   }
 

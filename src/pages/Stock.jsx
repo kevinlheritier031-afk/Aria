@@ -372,7 +372,13 @@ export default function Stock({ stock = [], setStock, fournisseurs = [], user, p
     setSaving(true)
     const payload = { ...form, user_id: user.id, etablissement_id: profile?.etablissement_id, updated_at: new Date().toISOString() }
     if (!payload.id) { payload.id = uid(); payload.date_reception = fdate() }
-    await upsertStock([payload])
+    const { error } = await upsertStock([payload])
+    if (error) {
+      console.error('❌ INSERT FAIL:', 'stock', error)
+      setSaving(false)
+      return
+    }
+    console.log('✅ INSERT OK:', 'stock', payload)
     setStock(s => form.id ? s.map(i => i.id === form.id ? payload : i) : [payload, ...s])
     setSaving(false)
     setEditItem(null)
@@ -385,17 +391,21 @@ export default function Stock({ stock = [], setStock, fournisseurs = [], user, p
   }
 
   async function handleSortie(item, qte, motif) {
-    const newQ   = Math.max(0, item.q - qte)
+    const newQ    = Math.max(0, item.q - qte)
     const updated = { ...item, q: newQ, user_id: user.id, etablissement_id: profile?.etablissement_id }
+    const { error } = await upsertStock([updated])
+    if (error) { console.error('❌ INSERT FAIL:', 'stock (sortie)', error); setSortieItem(null); return }
+    console.log('✅ INSERT OK:', 'stock (sortie)', updated)
     setStock(s => s.map(i => i.id === item.id ? { ...i, q: newQ } : i))
-    await upsertStock([updated])
     setSortieItem(null)
   }
 
   async function handleFlashUpdate(item, newQ) {
     const updated = { ...item, q: newQ, user_id: user.id, etablissement_id: profile?.etablissement_id }
+    const { error } = await upsertStock([updated])
+    if (error) { console.error('❌ INSERT FAIL:', 'stock (flash)', error); return }
+    console.log('✅ INSERT OK:', 'stock (flash)', updated)
     setStock(s => s.map(i => i.id === item.id ? { ...i, q: newQ } : i))
-    await upsertStock([updated])
   }
 
   return (

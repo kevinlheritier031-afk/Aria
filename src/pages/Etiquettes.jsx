@@ -183,9 +183,11 @@ function TabNouvelleEtiquette({ currentUser, stock, onPrint }) {
     setSaving(false)
 
     if (error) {
+      console.error('❌ INSERT FAIL:', 'etiquettes', error)
       showToast('Erreur : ' + error.message, false)
       return
     }
+    console.log('✅ INSERT OK:', 'etiquettes', payload)
 
     if (andPrint) {
       onPrint({ produit: payload.produit, type, dateFab: payload.date_fabrication, dlc: dlcDate, ddm: ddmDate, userName: currentUser.name, hasLabo })
