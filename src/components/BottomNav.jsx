@@ -1,4 +1,4 @@
-﻿import { NAV_ITEMS } from '../constants'
+﻿import { BOTTOM_NAV_ITEMS } from '../constants'
 
 // Keyframe for top-bar slide-in injected once
 const STYLE_ID = 'bnav-keyframes'
@@ -17,7 +17,7 @@ if (typeof document !== 'undefined' && !document.getElementById(STYLE_ID)) {
 export default function BottomNav({ page, setPage, alertDlc, alertCmd }) {
   return (
     <nav style={S.nav}>
-      {NAV_ITEMS.map(item => {
+      {BOTTOM_NAV_ITEMS.map(item => {
         const badge  = item.k === 'stock' ? alertDlc : item.k === 'commandes' ? alertCmd : 0
         const active = page === item.k
 

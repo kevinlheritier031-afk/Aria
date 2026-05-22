@@ -106,6 +106,7 @@ export const BOTTOM_NAV_ITEMS = [
   { k:'stock',      label:'Stock',    emoji:'📦' },
   { k:'aria',       label:'Aria',     emoji:'✦'  },
   { k:'etiquettes', label:'DLC',      emoji:'🏷️' },
+  { k:'haccp',      label:'HACCP',    emoji:'🛡️' },
   { k:'parametres', label:'Réglages', emoji:'⚙️' },
 ];
 
