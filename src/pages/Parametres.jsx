@@ -101,9 +101,9 @@ export default function Parametres({ user, profile: initProfile, setProfile, onL
         ])
 
         if (profRes.data) {
-          setDisplayName(profRes.data.name || '')
+          setDisplayName(profRes.data.display_name || profRes.data.name || '')
         } else {
-          setDisplayName(initProfile?.name || '')
+          setDisplayName(initProfile?.display_name || initProfile?.name || '')
         }
 
         if (etabRes.data) {
@@ -133,9 +133,13 @@ export default function Parametres({ user, profile: initProfile, setProfile, onL
   const saveCompte = async () => {
     startSave('compte')
     try {
-      const { error } = await supabase.from('profiles').update({ name: displayName }).eq('id', user.id)
+      const fullName    = displayName.trim()
+      const displayN    = fullName.split(' ')[0] || fullName
+      const { error } = await supabase.from('profiles')
+        .update({ name: fullName, display_name: displayN })
+        .eq('id', user.id)
       if (error) throw error
-      if (setProfile) setProfile(p => ({ ...p, name: displayName }))
+      if (setProfile) setProfile(p => ({ ...p, name: fullName, display_name: displayN }))
       showToast('Nom mis à jour')
     } catch { showToast('Erreur lors de la sauvegarde', 'error') }
     endSave('compte')
