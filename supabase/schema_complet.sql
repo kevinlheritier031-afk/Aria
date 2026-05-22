@@ -22,6 +22,9 @@ create table if not exists profiles (
 alter table profiles add column if not exists display_name         text;
 alter table profiles add column if not exists onboarding_completed boolean default false;
 alter table profiles add column if not exists etablissement_id     uuid;
+-- Supprimer les contraintes NOT NULL du schéma original (name/email fournis par trigger, pas l'upsert)
+alter table profiles alter column name  drop not null;
+alter table profiles alter column email drop not null;
 
 create table if not exists etablissements (
   id          uuid default uuid_generate_v4() primary key,

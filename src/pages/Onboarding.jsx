@@ -175,7 +175,7 @@ export default function Onboarding({ user, onComplete }) {
         const { data: etab, error: etabError } = await supabase
           .from('etablissements')
           .upsert(
-            { nom: data.nom, type: data.type || 'restaurant', nb_employes: data.nb_employes || null, owner_id: uid, actif: true, abonnement: 'starter' },
+            { nom: data.nom || 'Mon Restaurant', type: data.type || 'restaurant', nb_employes: data.nb_employes || null, owner_id: uid, actif: true, abonnement: 'starter' },
             { onConflict: 'owner_id' }
           )
           .select('id')
@@ -185,9 +185,18 @@ export default function Onboarding({ user, onComplete }) {
         EID = etab.id
         etablissementIdRef.current = EID
 
+        const userName = user.user_metadata?.name || user.user_metadata?.full_name || user.email?.split('@')[0] || ''
         const { data: profileData, error: profileError } = await supabase
           .from('profiles')
-          .upsert({ id: uid, etablissement_id: EID, role: 'proprietaire', onboarding_completed: false }, { onConflict: 'id' })
+          .upsert({
+            id:                   uid,
+            name:                 userName,
+            display_name:         userName,
+            email:                user.email || '',
+            etablissement_id:     EID,
+            role:                 'proprietaire',
+            onboarding_completed: false,
+          }, { onConflict: 'id' })
           .select()
         if (profileError) console.error('❌ INSERT FAIL:', 'profiles', profileError)
         else console.log('✅ INSERT OK:', 'profiles', profileData)
@@ -201,7 +210,12 @@ export default function Onboarding({ user, onComplete }) {
         console.log('[Onboarding] → UPSERT profiles.role =', roleKey)
         const { error } = await supabase
           .from('profiles')
-          .upsert({ id: uid, role: roleKey }, { onConflict: 'id' })
+          .upsert({
+            id:    uid,
+            name:  user.user_metadata?.name || user.user_metadata?.full_name || user.email?.split('@')[0] || '',
+            email: user.email || '',
+            role:  roleKey,
+          }, { onConflict: 'id' })
         if (error) throw error
         console.log('[Onboarding] ✅ Rôle:', roleKey)
         addStatus('✓ Rôle enregistré')
@@ -214,7 +228,7 @@ export default function Onboarding({ user, onComplete }) {
         for (const zone of data.zones) {
           const { data: hacData, error } = await supabase.from('haccp_zones').insert({
             etablissement_id: EID,
-            nom:      zone.nom,
+            nom:      zone.nom || 'Zone HACCP',
             temp_min: zone.temp_min,
             temp_max: zone.temp_max,
           }).select()
@@ -233,7 +247,7 @@ export default function Onboarding({ user, onComplete }) {
           const { data: fourData, error } = await supabase.from('fournisseurs').insert({
             etablissement_id: EID,
             user_id: uid,
-            nom:   f.nom,
+            nom:   f.nom || 'Fournisseur',
             mode:  f.mode  || 'tel',
             tel:   f.tel   || null,
             email: f.email || null,
@@ -251,7 +265,7 @@ export default function Onboarding({ user, onComplete }) {
         if (!EID) throw new Error('EID manquant avant INSERT stock')
         console.log('[Onboarding] EID used (stock):', EID)
         const items = data.produits.map(p => ({
-          nom: p.nom, q: Number(p.q) || 0, u: p.u || 'unité', cat: p.cat || 'autre',
+          nom: p.nom || 'Produit', q: Number(p.q) || 0, u: p.u || 'unité', cat: p.cat || 'autre',
           user_id: uid, etablissement_id: EID,
         }))
         const { data: stockData, error } = await supabase.from('stock').insert(items).select()
@@ -270,7 +284,7 @@ export default function Onboarding({ user, onComplete }) {
           const { data: recData, error } = await supabase.from('recettes').insert({
             etablissement_id: EID,
             user_id:     uid,
-            nom:         r.nom,
+            nom:         r.nom || 'Recette',
             portions:    r.portions    || 1,
             ingredients: r.ingredients || [],
           }).select()
@@ -285,7 +299,7 @@ export default function Onboarding({ user, onComplete }) {
       if (stepName === 'equipe' && !data.skipped && data.membres?.length) {
         for (const mem of data.membres) {
           const { data: memData, error } = await supabase.from('equipe_membres').insert({
-            name:     mem.name,
+            name:     mem.name || 'Membre',
             role:     mem.role     || 'employe',
             pin_code: mem.pin_code || '',
             owner_id: uid,
@@ -326,7 +340,12 @@ export default function Onboarding({ user, onComplete }) {
     try {
       const { error } = await supabase
         .from('profiles')
-        .upsert({ id: user.id, onboarding_completed: true }, { onConflict: 'id' })
+        .upsert({
+          id:                   user.id,
+          name:                 user.user_metadata?.name || user.user_metadata?.full_name || user.email?.split('@')[0] || '',
+          email:                user.email || '',
+          onboarding_completed: true,
+        }, { onConflict: 'id' })
       if (error) throw error
       console.log('[Onboarding] ✅ onboarding_completed = true')
     } catch (err) {
