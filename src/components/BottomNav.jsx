@@ -51,8 +51,8 @@ export default function BottomNav({ page, setPage, alertDlc, alertCmd }) {
 
             {/* Icon + badge wrapper */}
             <div style={S.iconWrap}>
-              <span style={{ ...S.icon, fontSize: active ? 22 : 20, transition: 'font-size .15s', color: (item.k === 'aria' && active) ? '#94A3B8' : 'inherit' }}>
-                {item.emoji}
+              <span style={{ ...S.icon, fontSize: active ? 22 : 20, transition: 'font-size .15s', color: item.k === 'aria' ? '#2563EB' : 'inherit' }}>
+                {item.k === 'aria' ? `${item.emoji}︎` : item.emoji}
               </span>
               {badge > 0 && (
                 <span style={S.badge}>{badge > 99 ? '99+' : badge}</span>
