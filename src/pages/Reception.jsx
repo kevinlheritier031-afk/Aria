@@ -77,9 +77,13 @@ export default function Reception({ scanLog = [], setScanLog, stock = [], setSto
   const [view,      setView]      = useState('scan')
   const [conf,      setConf]      = useState('a_verifier')
   const [saving,    setSaving]    = useState(false)
-  const [error,     setError]     = useState('')
-  const [saved,     setSaved]     = useState(false)
-  const [toast,     setToast]     = useState('')
+  const [error,       setError]       = useState('')
+  const [saved,       setSaved]       = useState(false)
+  const [toast,       setToast]       = useState('')
+  const [fourModal,   setFourModal]   = useState(null)   // { id, nom, tel, email, adresse, siret, site } | null
+  const [fourEditing, setFourEditing] = useState(false)
+  const [fourForm,    setFourForm]    = useState({})
+  const [fourSaving,  setFourSaving]  = useState(false)
 
   const galleryRef = useRef()
   const cameraRef  = useRef()
@@ -115,12 +119,21 @@ export default function Reception({ scanLog = [], setScanLog, stock = [], setSto
       setConf(data.conf || 'a_verifier')
       setView('scan')
 
-      if (data.fournisseur && (data.fournisseur_cree === true || data.fournisseur_id)) {
-        const msg = data.fournisseur_cree
-          ? `Fournisseur "${data.fournisseur}" ajouté automatiquement ✅`
-          : `Fournisseur "${data.fournisseur}" reconnu ✅`
-        setToast(msg)
-        setTimeout(() => setToast(''), 4000)
+      if (data.fournisseur_cree === true && data.fournisseur_id) {
+        const contact = data.fournisseur_contact || {}
+        setFourModal({
+          id:      data.fournisseur_id,
+          nom:     data.fournisseur,
+          tel:     contact.tel      || data.fournisseur_tel     || '',
+          email:   contact.email    || data.fournisseur_email   || '',
+          adresse: contact.adresse  || data.fournisseur_adresse || '',
+          siret:   contact.siret    || data.fournisseur_siret   || '',
+          site:    contact.site     || data.fournisseur_site    || '',
+        })
+        setFourEditing(false)
+      } else if (data.fournisseur && data.fournisseur_id) {
+        setToast(`Fournisseur "${data.fournisseur}" reconnu ✅`)
+        setTimeout(() => setToast(''), 3500)
       }
     } catch (e) {
       setError(`Analyse échouée : ${e.message}`)
@@ -184,6 +197,23 @@ export default function Reception({ scanLog = [], setScanLog, stock = [], setSto
     setSaved(true)
   }
 
+  async function saveFourEdits() {
+    if (!fourModal?.id) return
+    setFourSaving(true)
+    const updates = {
+      tel:     fourForm.tel     || null,
+      email:   fourForm.email   || null,
+      adresse: fourForm.adresse || null,
+      siret:   fourForm.siret   || null,
+      site:    fourForm.site    || null,
+    }
+    await supabase.from('fournisseurs').update(updates).eq('id', fourModal.id)
+    setFourModal(null)
+    setFourSaving(false)
+    setToast(`Fournisseur "${fourModal.nom}" mis à jour ✅`)
+    setTimeout(() => setToast(''), 3500)
+  }
+
   function reset() {
     setImage(null); setImageUrl(null); setResult(null)
     setProducts([]); setError(''); setSaved(false)
@@ -245,10 +275,97 @@ export default function Reception({ scanLog = [], setScanLog, stock = [], setSto
 
   return (
     <div style={S.page}>
-      {/* Toast fournisseur */}
+      {/* Toast */}
       {toast && (
         <div style={{ position:'fixed', bottom:24, left:'50%', transform:'translateX(-50%)', background:'#0F172A', color:'#fff', padding:'10px 20px', borderRadius:99, fontSize:13.5, fontWeight:600, zIndex:9999, boxShadow:'0 4px 20px rgba(0,0,0,.2)', whiteSpace:'nowrap' }}>
           {toast}
+        </div>
+      )}
+
+      {/* Modal nouveau fournisseur */}
+      {fourModal && (
+        <div style={{ position:'fixed', inset:0, zIndex:1000, display:'flex', flexDirection:'column', justifyContent:'flex-end', background:'rgba(15,23,42,.55)', backdropFilter:'blur(4px)' }} onClick={() => setFourModal(null)}>
+          <div style={{ background:'#fff', borderRadius:'24px 24px 0 0', padding:'24px 20px 40px', maxHeight:'90vh', overflowY:'auto', fontFamily:F }} onClick={e => e.stopPropagation()}>
+            {/* Handle */}
+            <div style={{ width:40, height:4, borderRadius:2, background:'#E2E8F0', margin:'0 auto 20px' }} />
+
+            {/* Header */}
+            <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:16 }}>
+              <div style={{ width:44, height:44, borderRadius:14, background:'#ECFDF5', display:'flex', alignItems:'center', justifyContent:'center', fontSize:22, flexShrink:0 }}>🏢</div>
+              <div style={{ flex:1 }}>
+                <div style={{ fontSize:16, fontWeight:800, color:'#0F172A' }}>{fourModal.nom}</div>
+                <div style={{ fontSize:12, color:'#10B981', fontWeight:600, marginTop:1 }}>✅ Nouveau fournisseur ajouté automatiquement</div>
+              </div>
+            </div>
+
+            {!fourEditing ? (
+              <>
+                {/* Info display */}
+                <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:20 }}>
+                  {[
+                    { icon:'📞', label:'Téléphone', val: fourModal.tel },
+                    { icon:'✉️', label:'Email',     val: fourModal.email },
+                    { icon:'📍', label:'Adresse',   val: fourModal.adresse },
+                    { icon:'🏛️', label:'SIRET/TVA',  val: fourModal.siret },
+                    { icon:'🌐', label:'Site web',  val: fourModal.site },
+                  ].map(({ icon, label, val }) => val ? (
+                    <div key={label} style={{ display:'flex', alignItems:'flex-start', gap:10, padding:'10px 14px', background:'#F8FAFC', borderRadius:12, border:'1px solid #E2E8F0' }}>
+                      <span style={{ fontSize:16, flexShrink:0, marginTop:1 }}>{icon}</span>
+                      <div>
+                        <div style={{ fontSize:11, fontWeight:600, color:'#94A3B8', textTransform:'uppercase', letterSpacing:'.4px', marginBottom:2 }}>{label}</div>
+                        <div style={{ fontSize:13.5, color:'#0F172A', fontWeight:500 }}>{val}</div>
+                      </div>
+                    </div>
+                  ) : null)}
+                  {!fourModal.tel && !fourModal.email && !fourModal.adresse && !fourModal.siret && !fourModal.site && (
+                    <div style={{ fontSize:13, color:'#94A3B8', textAlign:'center', padding:'12px 0' }}>
+                      Aucune coordonnée détectée sur la facture.
+                    </div>
+                  )}
+                </div>
+                <div style={{ display:'flex', gap:10 }}>
+                  <button onClick={() => setFourModal(null)} style={{ flex:1, padding:'12px', borderRadius:12, border:'1.5px solid #E2E8F0', background:'#F8FAFC', fontSize:14, fontWeight:600, cursor:'pointer', fontFamily:F, color:'#475569' }}>
+                    Fermer
+                  </button>
+                  <button
+                    onClick={() => { setFourEditing(true); setFourForm({ tel: fourModal.tel, email: fourModal.email, adresse: fourModal.adresse, siret: fourModal.siret, site: fourModal.site }) }}
+                    style={{ flex:1, padding:'12px', borderRadius:12, border:'none', background:'linear-gradient(135deg,#2563EB,#1D4ED8)', color:'#fff', fontSize:14, fontWeight:600, cursor:'pointer', fontFamily:F }}
+                  >
+                    ✏️ Modifier
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                {/* Edit form */}
+                {[
+                  { key:'tel',     icon:'📞', label:'Téléphone',  placeholder:'06 12 34 56 78' },
+                  { key:'email',   icon:'✉️', label:'Email',      placeholder:'contact@fournisseur.fr' },
+                  { key:'adresse', icon:'📍', label:'Adresse',    placeholder:'12 rue de la Paix, 75001 Paris' },
+                  { key:'siret',   icon:'🏛️', label:'SIRET/TVA', placeholder:'12345678901234' },
+                  { key:'site',    icon:'🌐', label:'Site web',   placeholder:'https://fournisseur.fr' },
+                ].map(({ key, icon, label, placeholder }) => (
+                  <div key={key} style={{ marginBottom:12 }}>
+                    <label style={{ fontSize:11, fontWeight:600, color:'#64748B', textTransform:'uppercase', letterSpacing:'.4px', marginBottom:5, display:'block' }}>{icon} {label}</label>
+                    <input
+                      value={fourForm[key] || ''}
+                      onChange={e => setFourForm(f => ({ ...f, [key]: e.target.value }))}
+                      placeholder={placeholder}
+                      style={{ width:'100%', padding:'10px 12px', borderRadius:10, border:'1.5px solid #E2E8F0', fontSize:14, fontFamily:F, outline:'none', background:'#F8FAFC', color:'#1E293B', boxSizing:'border-box' }}
+                    />
+                  </div>
+                ))}
+                <div style={{ display:'flex', gap:10, marginTop:4 }}>
+                  <button onClick={() => setFourEditing(false)} style={{ flex:1, padding:'12px', borderRadius:12, border:'1.5px solid #E2E8F0', background:'#F8FAFC', fontSize:14, fontWeight:600, cursor:'pointer', fontFamily:F, color:'#475569' }}>
+                    Annuler
+                  </button>
+                  <button onClick={saveFourEdits} disabled={fourSaving} style={{ flex:1, padding:'12px', borderRadius:12, border:'none', background:'linear-gradient(135deg,#10B981,#059669)', color:'#fff', fontSize:14, fontWeight:600, cursor:'pointer', fontFamily:F, opacity: fourSaving ? .7 : 1 }}>
+                    {fourSaving ? 'Enregistrement…' : '✓ Enregistrer'}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       )}
       {fromDashboard && (

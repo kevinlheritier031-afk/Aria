@@ -17,23 +17,41 @@ function getSupabase(accessToken) {
   )
 }
 
-async function upsertFournisseur({ nom, etablissementId, userId, accessToken }) {
+async function upsertFournisseur({ nom, tel, email, adresse, siret, site, etablissementId, userId, accessToken }) {
   const sb = getSupabase(accessToken)
   if (!sb || !nom || !etablissementId) return {}
   const { data: existing } = await sb
     .from('fournisseurs')
-    .select('id')
+    .select('id, tel, email, adresse, siret, site')
     .eq('etablissement_id', etablissementId)
     .ilike('nom', nom)
     .maybeSingle()
-  if (existing) return { fournisseur_cree: false, fournisseur_id: existing.id }
+  if (existing) {
+    // Enrich existing record with newly extracted contact info (only for missing fields)
+    const updates = {}
+    if (!existing.tel     && tel)     updates.tel     = tel
+    if (!existing.email   && email)   updates.email   = email
+    if (!existing.adresse && adresse) updates.adresse = adresse
+    if (!existing.siret   && siret)   updates.siret   = siret
+    if (!existing.site    && site)    updates.site    = site
+    if (Object.keys(updates).length > 0) {
+      await sb.from('fournisseurs').update(updates).eq('id', existing.id)
+    }
+    return { fournisseur_cree: false, fournisseur_id: existing.id }
+  }
+  const contact = {}
+  if (tel)     contact.tel     = tel
+  if (email)   contact.email   = email
+  if (adresse) contact.adresse = adresse
+  if (siret)   contact.siret   = siret
+  if (site)    contact.site    = site
   const { data, error } = await sb
     .from('fournisseurs')
-    .insert({ nom, etablissement_id: etablissementId, user_id: userId, mode: 'tel' })
+    .insert({ nom, etablissement_id: etablissementId, user_id: userId, mode: 'tel', ...contact })
     .select('id')
     .single()
   if (error) { console.error('❌ INSERT fournisseur:', error); return {} }
-  return { fournisseur_cree: true, fournisseur_id: data.id }
+  return { fournisseur_cree: true, fournisseur_id: data.id, fournisseur_contact: { tel, email, adresse, siret, site } }
 }
 
 // Détecte le type MIME depuis les premiers octets base64
@@ -47,7 +65,7 @@ function detectMediaType(b64) {
 
 const SYSTEM_PROMPT = `Tu es un OCR expert spécialisé dans les documents de restauration française (bons de livraison, factures fournisseurs, étiquettes produits).
 
-Ta mission : analyser l'image et extraire toutes les informations produits avec une précision maximale.
+Ta mission : analyser l'image et extraire toutes les informations produits ET toutes les coordonnées du fournisseur avec une précision maximale.
 
 Règles strictes :
 - Réponds UNIQUEMENT avec un objet JSON valide, sans texte avant ni après
@@ -58,10 +76,16 @@ Règles strictes :
 - Les prix sont en euros (nombres décimaux)
 - Les quantités sont des nombres décimaux
 - Pour "cat", choisir parmi : viande, poisson, laitier, epicerie, legumes, boissons, autre
+- Pour le SIRET : c'est un numéro à 14 chiffres. Un numéro de TVA intracommunautaire commence par "FR" suivi de 11 chiffres — extraire les deux si présents.
 
 Structure JSON attendue :
 {
-  "fournisseur": "Nom du fournisseur",
+  "fournisseur": "Nom exact du fournisseur ou de l'entreprise émettrice",
+  "fournisseur_tel": "numéro de téléphone visible sur le document ou null",
+  "fournisseur_email": "adresse email visible sur le document ou null",
+  "fournisseur_adresse": "adresse postale complète du fournisseur ou null",
+  "fournisseur_siret": "numéro SIRET (14 chiffres) ou TVA intracommunautaire ou null",
+  "fournisseur_site": "site web visible sur le document ou null",
   "date": "JJ/MM/AAAA ou null",
   "total": 0.00,
   "nb": 0,
@@ -152,10 +176,20 @@ export default async function handler(req, res) {
 
     const parsed = JSON.parse(match[0])
 
-    // Auto-upsert fournisseur if recognized
+    // Auto-upsert fournisseur with extracted contact info
     let fourExtra = {}
     if (parsed.fournisseur && etablissementId) {
-      fourExtra = await upsertFournisseur({ nom: parsed.fournisseur, etablissementId, userId, accessToken })
+      fourExtra = await upsertFournisseur({
+        nom:      parsed.fournisseur,
+        tel:      parsed.fournisseur_tel     || null,
+        email:    parsed.fournisseur_email   || null,
+        adresse:  parsed.fournisseur_adresse || null,
+        siret:    parsed.fournisseur_siret   || null,
+        site:     parsed.fournisseur_site    || null,
+        etablissementId,
+        userId,
+        accessToken,
+      })
     }
 
     return res.status(200).json({ ...parsed, ...fourExtra })

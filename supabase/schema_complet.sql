@@ -78,11 +78,15 @@ create table if not exists fournisseurs (
   tel              text,
   email            text,
   site             text,
+  adresse          text,
+  siret            text,
   jours            text[] default '{}',
   heure_limite     text default '09:00',
   created_at       timestamptz default now(),
   updated_at       timestamptz default now()
 );
+alter table fournisseurs add column if not exists adresse text;
+alter table fournisseurs add column if not exists siret   text;
 
 create table if not exists scans (
   id               uuid default uuid_generate_v4() primary key,
