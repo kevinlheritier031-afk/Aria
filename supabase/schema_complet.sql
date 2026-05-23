@@ -461,3 +461,80 @@ drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute procedure public.handle_new_user();
+
+-- ── HACCP — Températures (Phase 13) ─────────────────────────────────────────
+
+-- Ajouter la colonne type sur haccp_zones existante
+alter table haccp_zones add column if not exists type text default 'froid';
+
+create table if not exists haccp_appareils (
+  id               uuid default gen_random_uuid() primary key,
+  etablissement_id uuid references etablissements(id) on delete cascade,
+  zone_id          uuid references haccp_zones(id) on delete cascade,
+  nom              text not null,
+  temp_min         numeric,
+  temp_max         numeric,
+  created_at       timestamptz default now()
+);
+
+create table if not exists haccp_temperatures (
+  id                    uuid default gen_random_uuid() primary key,
+  etablissement_id      uuid references etablissements(id) on delete cascade,
+  appareil_id           uuid references haccp_appareils(id) on delete set null,
+  zone_id               uuid references haccp_zones(id) on delete set null,
+  type                  text not null check (type in ('froid', 'chaud', 'refroidissement')),
+  valeur                numeric not null,
+  conforme              boolean,
+  prise_par             uuid references profiles(id) on delete set null,
+  plat_nom              text,
+  refroidissement_etape text,
+  created_at            timestamptz default now()
+);
+
+create table if not exists haccp_plats_refroidissement (
+  id               uuid default gen_random_uuid() primary key,
+  etablissement_id uuid references etablissements(id) on delete cascade,
+  nom              text not null,
+  debut_cellule    timestamptz not null,
+  statut           text default 'en_cours' check (statut in ('en_cours', 'conforme', 'non_conforme')),
+  prise_par        uuid references profiles(id) on delete set null,
+  created_at       timestamptz default now()
+);
+
+create table if not exists haccp_settings (
+  id                          uuid default gen_random_uuid() primary key,
+  etablissement_id            uuid references etablissements(id) on delete cascade unique,
+  nb_prises_chaud_par_service integer default 2,
+  created_at                  timestamptz default now()
+);
+
+-- RLS
+alter table haccp_appareils             enable row level security;
+alter table haccp_temperatures          enable row level security;
+alter table haccp_plats_refroidissement enable row level security;
+alter table haccp_settings              enable row level security;
+
+drop policy if exists "haccp_appareils_all"     on haccp_appareils;
+drop policy if exists "haccp_temperatures_all"  on haccp_temperatures;
+drop policy if exists "haccp_plats_all"         on haccp_plats_refroidissement;
+drop policy if exists "haccp_settings_all"      on haccp_settings;
+
+create policy "haccp_appareils_all" on haccp_appareils
+  for all
+  using      (etablissement_id in (select id from etablissements where owner_id = auth.uid()))
+  with check (etablissement_id in (select id from etablissements where owner_id = auth.uid()));
+
+create policy "haccp_temperatures_all" on haccp_temperatures
+  for all
+  using      (etablissement_id in (select id from etablissements where owner_id = auth.uid()))
+  with check (etablissement_id in (select id from etablissements where owner_id = auth.uid()));
+
+create policy "haccp_plats_all" on haccp_plats_refroidissement
+  for all
+  using      (etablissement_id in (select id from etablissements where owner_id = auth.uid()))
+  with check (etablissement_id in (select id from etablissements where owner_id = auth.uid()));
+
+create policy "haccp_settings_all" on haccp_settings
+  for all
+  using      (etablissement_id in (select id from etablissements where owner_id = auth.uid()))
+  with check (etablissement_id in (select id from etablissements where owner_id = auth.uid()));
