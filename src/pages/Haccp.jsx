@@ -10,6 +10,14 @@ const ETAPES = [
   { key: '2h',    label: '2 h',   ms: 7200000,  seuil: 10  },
 ]
 
+const FORM_MODULES = [
+  { id: 1, title: 'Aliments et risques alimentaires', icon: '🦠', desc: 'Dangers biologiques, chimiques, physiques et allergènes', color: '#6366F1', bg: '#EEF2FF' },
+  { id: 2, title: 'Réglementation HACCP',             icon: '⚖️', desc: 'Arrêté du 12 février 2024 — obligations légales',         color: '#F59E0B', bg: '#FFFBEB' },
+  { id: 3, title: 'Plan de Maîtrise Sanitaire',       icon: '📋', desc: 'PMS, 7 principes HACCP, CCPs et surveillance',           color: '#10B981', bg: '#ECFDF5' },
+  { id: 4, title: 'Nettoyage et Désinfection',        icon: '🧹', desc: 'Protocoles N+D, PND et fréquences réglementaires',       color: '#3B82F6', bg: '#EFF6FF' },
+  { id: 5, title: 'Traçabilité et non-conformités',   icon: '🔍', desc: 'Traçabilité amont/interne/aval et actions correctives',  color: '#EC4899', bg: '#FDF2F8' },
+]
+
 function fmtTime(ts) {
   return new Date(ts).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
 }
@@ -143,6 +151,22 @@ export default function Haccp({ user, profile, fromDashboard, onBack }) {
     return () => clearInterval(id)
   }, [])
 
+  // Formation
+  const [formProgs,       setFormProgs]       = useState([])
+  const [formModule,      setFormModule]      = useState(null)
+  const [formView,        setFormView]        = useState('list')
+  const [formChat,        setFormChat]        = useState([])
+  const [formChatInput,   setFormChatInput]   = useState('')
+  const [formChatLoading, setFormChatLoading] = useState(false)
+  const [formQuizReady,   setFormQuizReady]   = useState(false)
+  const [formQuiz,        setFormQuiz]        = useState([])
+  const [formQuizLoading, setFormQuizLoading] = useState(false)
+  const [formQuizIdx,     setFormQuizIdx]     = useState(0)
+  const [formQuizAnswers, setFormQuizAnswers] = useState({})
+  const [formResult,      setFormResult]      = useState(null)
+  const [formSaving,      setFormSaving]      = useState(false)
+  const formBottomRef = useRef(null)
+
   // ── Load ────────────────────────────────────────────────────────────────────
   const load = useCallback(async () => {
     setLoading(true)
@@ -153,18 +177,20 @@ export default function Haccp({ user, profile, fromDashboard, onBack }) {
       setEid(realEid)
 
       const since24h = new Date(Date.now() - 86400000).toISOString()
-      const [zonesRes, apRes, settRes, platsRes, tempsRes] = await Promise.all([
+      const [zonesRes, apRes, settRes, platsRes, tempsRes, formRes] = await Promise.all([
         supabase.from('haccp_zones').select('*').eq('etablissement_id', realEid).order('nom'),
         supabase.from('haccp_appareils').select('*').eq('etablissement_id', realEid).order('nom'),
         supabase.from('haccp_settings').select('*').eq('etablissement_id', realEid).maybeSingle(),
         supabase.from('haccp_plats_refroidissement').select('*').eq('etablissement_id', realEid).order('created_at', { ascending: false }),
         supabase.from('haccp_temperatures').select('*').eq('etablissement_id', realEid).gte('created_at', since24h).order('created_at', { ascending: false }),
+        supabase.from('haccp_formation_progression').select('*').eq('etablissement_id', realEid).eq('user_id', user.id),
       ])
 
       if (zonesRes.data)    setZones(zonesRes.data)
       if (apRes.data)       setAppareils(apRes.data)
       if (settRes.data)     setSettings(settRes.data)
       if (tempsRes.data)    setTemps(tempsRes.data)
+      if (formRes.data)     setFormProgs(formRes.data)
       if (platsRes.data) {
         setPlats(platsRes.data.filter(p => p.statut === 'en_cours'))
         setPlatsDone(platsRes.data.filter(p => p.statut !== 'en_cours' && new Date(p.created_at) > new Date(Date.now() - 86400000)))
@@ -284,6 +310,159 @@ export default function Haccp({ user, profile, fromDashboard, onBack }) {
     if (conforme !== null) setFeedback({ conforme, valeur, seuil: etape.seuil })
   }
 
+  // ── Formation ──────────────────────────────────────────────────────────────
+  const openFormModule = (mod) => {
+    const prog = formProgs.find(p => p.module_id === mod.id)
+    const conv = prog?.conversation || []
+    setFormModule(mod)
+    setFormChat(conv)
+    setFormQuizReady(conv.some(m => m.role === 'assistant' && m.content?.includes('[QUIZ_READY]')))
+    setFormView('chat')
+    setFormResult(null)
+    setFormQuiz([])
+    setFormQuizIdx(0)
+    setFormQuizAnswers({})
+  }
+
+  const sendFormChat = async (msg) => {
+    if (!msg?.trim() || formChatLoading || !eid) return
+    const newMsg = { role: 'user', content: msg }
+    const newChat = [...formChat, newMsg]
+    setFormChat(newChat)
+    setFormChatInput('')
+    setFormChatLoading(true)
+    try {
+      const res  = await fetch('/api/formation-chat', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          module_id: formModule.id,
+          history:   formChat.slice(-16),
+          message:   msg,
+        }),
+      })
+      const data  = await res.json()
+      const reply = data.reply || 'Désolée, je n\'ai pas pu répondre.'
+      const assistantMsg = { role: 'assistant', content: reply }
+      const finalChat = [...newChat, assistantMsg]
+      setFormChat(finalChat)
+      if (reply.includes('[QUIZ_READY]')) setFormQuizReady(true)
+
+      const prog = formProgs.find(p => p.module_id === formModule.id)
+      await supabase.from('haccp_formation_progression').upsert({
+        etablissement_id: eid,
+        user_id:          user.id,
+        module_id:        formModule.id,
+        statut:           'en_cours',
+        conversation:     finalChat,
+        started_at:       prog?.started_at || new Date().toISOString(),
+      }, { onConflict: 'user_id,module_id' })
+      setFormProgs(prev => {
+        const existing = prev.find(p => p.module_id === formModule.id)
+        if (existing) return prev.map(p => p.module_id === formModule.id ? { ...p, conversation: finalChat, statut: 'en_cours' } : p)
+        return [...prev, { module_id: formModule.id, statut: 'en_cours', conversation: finalChat }]
+      })
+    } catch {
+      setFormChat(c => [...c, { role: 'assistant', content: 'Erreur de connexion. Réessayez.' }])
+    } finally {
+      setFormChatLoading(false)
+      setTimeout(() => formBottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 100)
+    }
+  }
+
+  const loadQuiz = async () => {
+    setFormQuizLoading(true)
+    setFormView('quiz')
+    try {
+      const res  = await fetch('/api/formation-quiz', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ module_id: formModule.id }),
+      })
+      const data = await res.json()
+      setFormQuiz(data.questions || [])
+      setFormQuizIdx(0)
+      setFormQuizAnswers({})
+    } catch {
+      setFormQuiz([])
+    } finally {
+      setFormQuizLoading(false)
+    }
+  }
+
+  const submitQuiz = async () => {
+    if (!formQuiz.length || !eid) return
+    let correct = 0
+    formQuiz.forEach((q, i) => { if (formQuizAnswers[i] === q.correct) correct++ })
+    const score  = Math.round((correct / formQuiz.length) * 100)
+    const passed = score >= 70
+    const statut = passed ? 'valide' : 'echoue'
+    setFormResult({ score, correct, total: formQuiz.length, passed })
+    setFormView('result')
+    setFormSaving(true)
+    await supabase.from('haccp_formation_progression').upsert({
+      etablissement_id: eid,
+      user_id:          user.id,
+      module_id:        formModule.id,
+      statut,
+      score_quiz:       score,
+      completed_at:     passed ? new Date().toISOString() : null,
+    }, { onConflict: 'user_id,module_id' })
+    setFormProgs(prev => prev.map(p => p.module_id === formModule.id ? { ...p, statut, score_quiz: score } : p))
+    setFormSaving(false)
+  }
+
+  const printAttestation = () => {
+    const etabName  = profile?.etablissement_nom || profile?.name || 'Établissement'
+    const userName  = profile?.display_name || profile?.name || 'Stagiaire'
+    const dateStr   = new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })
+    const rows = FORM_MODULES.map(m => {
+      const p = formProgs.find(x => x.module_id === m.id)
+      return `<tr>
+        <td style="padding:8px 12px;border-bottom:1px solid #E2E8F0;">${m.icon} ${m.title}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E2E8F0;text-align:center;font-weight:700;color:${p?.statut === 'valide' ? '#059669' : '#DC2626'}">
+          ${p?.statut === 'valide' ? '✅ Validé' : '—'}
+        </td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E2E8F0;text-align:center;font-family:monospace;">
+          ${p?.score_quiz != null ? p.score_quiz + ' %' : '—'}
+        </td>
+      </tr>`
+    }).join('')
+    const win = window.open('', '_blank')
+    win.document.write(`<!DOCTYPE html>
+<html lang="fr">
+<head><meta charset="UTF-8"><title>Attestation HACCP — ${userName}</title>
+<style>
+  body { font-family: Arial, sans-serif; margin: 40px; color: #1E293B; }
+  h1   { font-size: 22px; color: #2563EB; margin-bottom: 4px; }
+  .sub { font-size: 13px; color: #64748B; margin-bottom: 24px; }
+  table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+  th { background: #EFF6FF; padding: 10px 12px; text-align: left; font-size: 13px; color: #1E40AF; }
+  td { font-size: 13px; color: #334155; }
+  .footer { font-size: 11px; color: #94A3B8; margin-top: 32px; border-top: 1px solid #E2E8F0; padding-top: 12px; }
+  @media print { body { margin: 20px; } }
+</style>
+</head>
+<body>
+<h1>Attestation de Formation HACCP</h1>
+<div class="sub">Délivrée conformément à l'arrêté du 12 février 2024 relatif aux règles sanitaires en restauration commerciale</div>
+<p><strong>Nom du bénéficiaire :</strong> ${userName}</p>
+<p><strong>Établissement :</strong> ${etabName}</p>
+<p><strong>Date d'émission :</strong> ${dateStr}</p>
+<p><strong>Organisme de formation :</strong> Aria — Intelligence Cuisine</p>
+<table>
+  <thead><tr><th>Module</th><th style="text-align:center">Statut</th><th style="text-align:center">Score</th></tr></thead>
+  <tbody>${rows}</tbody>
+</table>
+<div class="footer">
+  Cette attestation est générée automatiquement par l'application Aria. Elle certifie que le bénéficiaire a suivi et validé les 5 modules de formation HACCP conformément au référentiel de l'arrêté du 12 février 2024.
+  La valeur probante de ce document peut être présentée à la DDPP en cas de contrôle.
+</div>
+<script>window.onload = () => { window.print() }</script>
+</body></html>`)
+    win.document.close()
+  }
+
   // ── Derived ─────────────────────────────────────────────────────────────────
   if (loading) {
     return (
@@ -306,6 +485,11 @@ export default function Haccp({ user, profile, fromDashboard, onBack }) {
           0%,100% { box-shadow: 0 0 0 0 rgba(37,99,235,.5); }
           50%      { box-shadow: 0 0 0 6px rgba(37,99,235,0); }
         }
+        @keyframes aria-dot {
+          0%,80%,100% { transform: scale(0.55); opacity:.35; }
+          40%          { transform: scale(1);    opacity:1;   }
+        }
+        @keyframes ptr-spin { to { transform: rotate(360deg); } }
       `}</style>
 
       <div style={{ fontFamily: F, maxWidth: 640, margin: '0 auto', paddingBottom: 80 }}>
@@ -318,7 +502,7 @@ export default function Haccp({ user, profile, fromDashboard, onBack }) {
 
         {/* Tabs */}
         <div style={{ display: 'flex', padding: '14px 16px 0', gap: 4, borderBottom: '1px solid #E2E8F0', background: '#fff', position: 'sticky', top: 0, zIndex: 10 }}>
-          {['🌡️ Froid', '🔥 Chaud', '❄️ Refroid.'].map((t, i) => (
+          {['🌡️ Froid', '🔥 Chaud', '❄️ Refroid.', '🎓 Formation'].map((t, i) => (
             <button
               key={i}
               onClick={() => setTab(i)}
@@ -534,6 +718,282 @@ export default function Haccp({ user, profile, fromDashboard, onBack }) {
             )}
           </div>
         )}
+
+        {/* ══════════════ ONGLET FORMATION ══════════════ */}
+        {tab === 3 && (() => {
+          const allValidated = FORM_MODULES.every(m => formProgs.find(p => p.module_id === m.id && p.statut === 'valide'))
+
+          // ── Vue Liste ──
+          if (formView === 'list' || !formModule) return (
+            <div style={{ padding: '16px 16px 0' }}>
+              <div style={{ ...S.card, background: 'linear-gradient(135deg,#EEF2FF,#E0E7FF)', borderColor: '#A5B4FC', marginBottom: 16 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: '#4F46E5', marginBottom: 4 }}>Formation HACCP officielle</div>
+                <div style={{ fontSize: 12.5, color: '#6366F1', lineHeight: 1.6 }}>
+                  5 modules conformes à l'arrêté du 12 février 2024. Aria vous enseigne et génère un quiz dynamique pour chaque module.
+                </div>
+              </div>
+
+              {allValidated && (
+                <button onClick={printAttestation} style={{ ...S.btnP, width: '100%', marginBottom: 16, background: 'linear-gradient(135deg,#10B981,#059669)' }}>
+                  🎓 Télécharger mon attestation PDF
+                </button>
+              )}
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {FORM_MODULES.map((mod, idx) => {
+                  const prog      = formProgs.find(p => p.module_id === mod.id)
+                  const validated = prog?.statut === 'valide'
+                  const prevOk    = idx === 0 || formProgs.find(p => p.module_id === FORM_MODULES[idx - 1].id && p.statut === 'valide')
+                  const locked    = !prevOk
+                  return (
+                    <button
+                      key={mod.id}
+                      onClick={() => !locked && openFormModule(mod)}
+                      disabled={locked}
+                      style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px', borderRadius: 16, border: `1.5px solid ${validated ? mod.color + '66' : locked ? '#E2E8F0' : '#E2E8F0'}`, background: validated ? mod.bg : locked ? '#F8FAFC' : '#fff', cursor: locked ? 'default' : 'pointer', fontFamily: F, textAlign: 'left', opacity: locked ? .55 : 1 }}
+                    >
+                      <div style={{ width: 46, height: 46, borderRadius: 14, background: validated ? mod.bg : '#F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, flexShrink: 0, border: validated ? `1.5px solid ${mod.color}44` : '1.5px solid #E2E8F0' }}>
+                        {locked ? '🔒' : mod.icon}
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13.5, fontWeight: 700, color: validated ? mod.color : '#0F172A', marginBottom: 2 }}>
+                          Module {mod.id} — {mod.title}
+                        </div>
+                        <div style={{ fontSize: 12, color: '#94A3B8', lineHeight: 1.4 }}>{mod.desc}</div>
+                        {validated && prog?.score_quiz != null && (
+                          <div style={{ fontSize: 11.5, fontWeight: 600, color: mod.color, marginTop: 4 }}>✅ Validé — score {prog.score_quiz}%</div>
+                        )}
+                        {prog?.statut === 'en_cours' && <div style={{ fontSize: 11, color: '#F59E0B', marginTop: 4 }}>⏳ En cours</div>}
+                        {prog?.statut === 'echoue' && <div style={{ fontSize: 11, color: '#EF4444', marginTop: 4 }}>↩ À repasser (score {prog.score_quiz}%)</div>}
+                      </div>
+                      {!locked && <span style={{ color: '#CBD5E1', fontSize: 18, flexShrink: 0 }}>›</span>}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )
+
+          // ── Vue Chat ──
+          if (formView === 'chat') return (
+            <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 200px)', minHeight: 400 }}>
+              {/* Header */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 16px', borderBottom: '1px solid #E2E8F0', flexShrink: 0 }}>
+                <button onClick={() => { setFormView('list'); setFormModule(null) }} style={{ ...S.btnGhost, padding: '6px 10px' }}>←</button>
+                <div style={{ width: 36, height: 36, borderRadius: 10, background: formModule.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, flexShrink: 0 }}>{formModule.icon}</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: '#0F172A', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Module {formModule.id} — {formModule.title}</div>
+                  <div style={{ fontSize: 11, color: '#94A3B8' }}>Formation avec Aria</div>
+                </div>
+                {formQuizReady && (
+                  <button onClick={loadQuiz} style={{ ...S.btnP, padding: '8px 12px', fontSize: 12, flexShrink: 0 }}>
+                    ✏️ Quiz
+                  </button>
+                )}
+              </div>
+
+              {/* Messages */}
+              <div style={{ flex: 1, overflowY: 'auto', padding: '16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {formChat.length === 0 && (
+                  <div style={{ textAlign: 'center', padding: '32px 20px', color: '#94A3B8', fontSize: 13 }}>
+                    <div style={{ fontSize: 40, marginBottom: 12 }}>{formModule.icon}</div>
+                    <div style={{ fontWeight: 600, color: '#64748B', marginBottom: 6 }}>Formation : {formModule.title}</div>
+                    <div>Posez une question ou dites "Je suis prêt(e) à commencer"</div>
+                  </div>
+                )}
+                {formChat.map((m, i) => {
+                  const displayContent = m.content?.replace('[QUIZ_READY]', '').trim()
+                  return (
+                    <div key={i} style={{ display: 'flex', flexDirection: m.role === 'user' ? 'row-reverse' : 'row', gap: 8, alignItems: 'flex-end' }}>
+                      {m.role === 'assistant' && (
+                        <div style={{ width: 28, height: 28, borderRadius: '50%', background: formModule.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, color: '#fff', flexShrink: 0 }}>✦</div>
+                      )}
+                      <div style={{ maxWidth: '78%', padding: '10px 14px', fontSize: 13.5, lineHeight: 1.65, whiteSpace: 'pre-wrap', borderRadius: m.role === 'user' ? '16px 4px 16px 16px' : '4px 16px 16px 16px', background: m.role === 'user' ? '#2563EB' : '#F1F5F9', color: m.role === 'user' ? '#fff' : '#0F172A', fontFamily: F }}>
+                        {displayContent}
+                      </div>
+                    </div>
+                  )
+                })}
+                {formChatLoading && (
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+                    <div style={{ width: 28, height: 28, borderRadius: '50%', background: formModule.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, color: '#fff', flexShrink: 0 }}>✦</div>
+                    <div style={{ padding: '10px 14px', background: '#F1F5F9', borderRadius: '4px 16px 16px 16px', fontSize: 13, color: '#64748B' }}>
+                      <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}>
+                        {[0,1,2].map(i => <span key={i} style={{ width: 6, height: 6, borderRadius: '50%', background: formModule.color, display: 'inline-block', animation: `aria-dot 1.2s ease-in-out ${i * 0.2}s infinite` }} />)}
+                      </span>
+                    </div>
+                  </div>
+                )}
+                {formQuizReady && !formChatLoading && (
+                  <div style={{ textAlign: 'center', padding: '12px 0' }}>
+                    <button onClick={loadQuiz} style={{ ...S.btnP, background: `linear-gradient(135deg,${formModule.color},${formModule.color}CC)` }}>
+                      ✏️ Passer le quiz maintenant
+                    </button>
+                  </div>
+                )}
+                <div ref={formBottomRef} />
+              </div>
+
+              {/* Input */}
+              <div style={{ padding: '12px 16px', borderTop: '1px solid #E2E8F0', display: 'flex', gap: 8, flexShrink: 0 }}>
+                <input
+                  style={{ ...S.input, flex: 1, borderRadius: 20, padding: '9px 16px', fontSize: 13 }}
+                  placeholder="Posez une question…"
+                  value={formChatInput}
+                  onChange={e => setFormChatInput(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter' && formChatInput.trim() && !formChatLoading) sendFormChat(formChatInput.trim()) }}
+                />
+                <button
+                  onClick={() => sendFormChat(formChatInput.trim())}
+                  disabled={!formChatInput.trim() || formChatLoading}
+                  style={{ width: 38, height: 38, borderRadius: '50%', border: 'none', background: formModule.color, color: '#fff', fontSize: 16, cursor: 'pointer', flexShrink: 0, opacity: (!formChatInput.trim() || formChatLoading) ? .5 : 1 }}
+                >
+                  →
+                </button>
+              </div>
+            </div>
+          )
+
+          // ── Vue Quiz ──
+          if (formView === 'quiz') return (
+            <div style={{ padding: '16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+                <button onClick={() => setFormView('chat')} style={{ ...S.btnGhost, padding: '6px 10px' }}>←</button>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: '#0F172A' }}>Quiz — Module {formModule.id}</div>
+                  {!formQuizLoading && formQuiz.length > 0 && (
+                    <div style={{ fontSize: 11.5, color: '#94A3B8' }}>Question {formQuizIdx + 1} / {formQuiz.length} — Score minimum : 70%</div>
+                  )}
+                </div>
+              </div>
+
+              {formQuizLoading ? (
+                <div style={{ textAlign: 'center', padding: '40px 0', color: '#94A3B8' }}>
+                  <div style={{ fontSize: 32, marginBottom: 12, animation: 'ptr-spin .8s linear infinite', display: 'inline-block' }}>✦</div>
+                  <div style={{ fontSize: 13 }}>Aria génère votre quiz…</div>
+                </div>
+              ) : formQuiz.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '40px 0' }}>
+                  <div style={{ fontSize: 13, color: '#EF4444', marginBottom: 12 }}>Erreur lors du chargement du quiz.</div>
+                  <button onClick={loadQuiz} style={S.btnP}>Réessayer</button>
+                </div>
+              ) : (() => {
+                const q = formQuiz[formQuizIdx]
+                const answered = formQuizAnswers[formQuizIdx] !== undefined
+                const isLast = formQuizIdx === formQuiz.length - 1
+                const allDone = formQuiz.every((_, i) => formQuizAnswers[i] !== undefined)
+                return (
+                  <div>
+                    {/* Progress */}
+                    <div style={{ height: 4, background: '#E2E8F0', borderRadius: 99, marginBottom: 20, overflow: 'hidden' }}>
+                      <div style={{ height: '100%', width: `${((formQuizIdx + 1) / formQuiz.length) * 100}%`, background: formModule.color, borderRadius: 99, transition: 'width .3s' }} />
+                    </div>
+
+                    <div style={S.card}>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: '#0F172A', marginBottom: 16, lineHeight: 1.5 }}>
+                        {q.question}
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        {q.options.map((opt, oi) => {
+                          const sel = formQuizAnswers[formQuizIdx] === oi
+                          return (
+                            <button
+                              key={oi}
+                              onClick={() => setFormQuizAnswers(prev => ({ ...prev, [formQuizIdx]: oi }))}
+                              style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 14px', border: sel ? `2px solid ${formModule.color}` : '1.5px solid #E2E8F0', borderRadius: 12, background: sel ? formModule.bg : '#F8FAFC', cursor: 'pointer', fontFamily: F, textAlign: 'left' }}
+                            >
+                              <div style={{ width: 20, height: 20, borderRadius: '50%', border: sel ? `2px solid ${formModule.color}` : '2px solid #CBD5E1', background: sel ? formModule.color : 'transparent', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                {sel && <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#fff' }} />}
+                              </div>
+                              <span style={{ fontSize: 13, color: '#0F172A', fontWeight: sel ? 600 : 400 }}>{opt}</span>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+                      {formQuizIdx > 0 && (
+                        <button onClick={() => setFormQuizIdx(i => i - 1)} style={S.btnGhost}>← Précédent</button>
+                      )}
+                      {!isLast ? (
+                        <button
+                          onClick={() => setFormQuizIdx(i => i + 1)}
+                          disabled={!answered}
+                          style={{ ...S.btnP, flex: 1, opacity: !answered ? .5 : 1 }}
+                        >
+                          Suivant →
+                        </button>
+                      ) : (
+                        <button
+                          onClick={submitQuiz}
+                          disabled={!allDone || formSaving}
+                          style={{ ...S.btnP, flex: 1, opacity: !allDone ? .5 : 1, background: `linear-gradient(135deg,${formModule.color},${formModule.color}CC)` }}
+                        >
+                          {formSaving ? 'Enregistrement…' : 'Valider le quiz'}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )
+              })()}
+            </div>
+          )
+
+          // ── Vue Résultat ──
+          if (formView === 'result' && formResult) return (
+            <div style={{ padding: '16px' }}>
+              <div style={{ ...S.card, textAlign: 'center', marginBottom: 16, border: formResult.passed ? '1.5px solid #A7F3D0' : '1.5px solid #FECACA', background: formResult.passed ? 'linear-gradient(135deg,#F0FDF4,#ECFDF5)' : 'linear-gradient(135deg,#FEF2F2,#FFF5F5)' }}>
+                <div style={{ fontSize: 52, marginBottom: 12 }}>{formResult.passed ? '🎓' : '📝'}</div>
+                <div style={{ fontSize: 20, fontWeight: 800, color: formResult.passed ? '#059669' : '#DC2626', marginBottom: 8 }}>
+                  {formResult.passed ? 'Module validé !' : 'Score insuffisant'}
+                </div>
+                <div style={{ fontSize: 40, fontWeight: 800, fontFamily: "'DM Mono',monospace", color: formResult.passed ? '#059669' : '#EF4444', marginBottom: 8 }}>
+                  {formResult.score}%
+                </div>
+                <div style={{ fontSize: 13.5, color: '#64748B' }}>
+                  {formResult.correct}/{formResult.total} bonnes réponses
+                  {formResult.passed ? ' — Félicitations !' : ' — Minimum requis : 70%'}
+                </div>
+              </div>
+
+              {/* Correction */}
+              <div style={{ ...S.card, marginBottom: 16 }}>
+                <div style={S.sectionTitle}>Correction</div>
+                {formQuiz.map((q, qi) => {
+                  const userAns  = formQuizAnswers[qi]
+                  const isOk     = userAns === q.correct
+                  return (
+                    <div key={qi} style={{ padding: '10px 12px', background: isOk ? '#F0FDF4' : '#FEF2F2', borderRadius: 10, border: `1px solid ${isOk ? '#A7F3D0' : '#FECACA'}`, marginBottom: 8 }}>
+                      <div style={{ fontSize: 12.5, fontWeight: 700, color: '#0F172A', marginBottom: 4 }}>{qi + 1}. {q.question}</div>
+                      <div style={{ fontSize: 12, color: isOk ? '#059669' : '#DC2626', fontWeight: 500, marginBottom: q.explication ? 4 : 0 }}>
+                        {isOk ? '✓' : '✗'} {q.options[userAns]}
+                        {!isOk && <span style={{ color: '#059669' }}> → {q.options[q.correct]}</span>}
+                      </div>
+                      {q.explication && <div style={{ fontSize: 11.5, color: '#64748B', lineHeight: 1.5 }}>{q.explication}</div>}
+                    </div>
+                  )
+                })}
+              </div>
+
+              {formResult.passed ? (
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <button onClick={() => { setFormView('list'); setFormModule(null) }} style={{ ...S.btnGhost, flex: 1 }}>← Modules</button>
+                  {FORM_MODULES.every(m => formProgs.find(p => p.module_id === m.id && p.statut === 'valide')) && (
+                    <button onClick={printAttestation} style={{ ...S.btnP, flex: 1, background: 'linear-gradient(135deg,#10B981,#059669)' }}>🎓 Attestation</button>
+                  )}
+                </div>
+              ) : (
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <button onClick={() => { setFormView('list'); setFormModule(null) }} style={{ ...S.btnGhost, flex: 1 }}>← Modules</button>
+                  <button onClick={() => { setFormView('quiz'); loadQuiz() }} style={{ ...S.btnP, flex: 1 }}>🔄 Réessayer</button>
+                </div>
+              )}
+            </div>
+          )
+
+          return null
+        })()}
       </div>
 
       {/* ══════════════ MODALS ══════════════ */}

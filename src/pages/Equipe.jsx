@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { fetchEquipeMembres, upsertEquipeMembre, deleteEquipeMembre } from '../lib/supabase'
+import { supabase, fetchEquipeMembres, upsertEquipeMembre, deleteEquipeMembre } from '../lib/supabase'
 import { ROLES, uid, initials } from '../constants'
 import { canDo } from '../hooks/usePermissions'
 
@@ -507,6 +507,14 @@ function AriaFormationModal({ membre, onClose, user }) {
 
 // ── TabEquipe ──────────────────────────────────────────────────────────────────
 
+const HACCP_MODULES_LABELS = [
+  { id: 1, title: 'Aliments & risques',    icon: '🦠', color: '#6366F1' },
+  { id: 2, title: 'Réglementation',        icon: '⚖️', color: '#F59E0B' },
+  { id: 3, title: 'PMS & HACCP',          icon: '📋', color: '#10B981' },
+  { id: 4, title: 'Nettoyage & Désinfect.', icon: '🧹', color: '#3B82F6' },
+  { id: 5, title: 'Traçabilité',           icon: '🔍', color: '#EC4899' },
+]
+
 function TabEquipe({ user, profile, membres, setMembres, loading }) {
   const [showInvite,    setShowInvite]    = useState(false)
   const [saving,        setSaving]        = useState(false)
@@ -516,8 +524,18 @@ function TabEquipe({ user, profile, membres, setMembres, loading }) {
   const [deleteConfirm, setDeleteConfirm] = useState(null)
   const [pinVisible,    setPinVisible]    = useState({})
   const [ariaModal,     setAriaModal]     = useState(null)
+  const [haccpProgs,    setHaccpProgs]    = useState([])
 
   const canManage = canDo('gerer_equipe', profile?.role)
+
+  useEffect(() => {
+    if (!profile?.etablissement_id) return
+    supabase
+      .from('haccp_formation_progression')
+      .select('*, profiles(name, display_name, role)')
+      .eq('etablissement_id', profile.etablissement_id)
+      .then(({ data }) => { if (data) setHaccpProgs(data) })
+  }, [profile?.etablissement_id])
   const f = (k, v) => setForm(p => ({ ...p, [k]:v }))
 
   function togglePin(id) {
@@ -746,6 +764,60 @@ function TabEquipe({ user, profile, membres, setMembres, loading }) {
           })
         )}
       </div>
+
+      {/* Formation HACCP officielle */}
+      {canManage && (
+        <div style={S.card}>
+          <div style={S.cardTitle}>Formation HACCP officielle — Progressions</div>
+          {haccpProgs.length === 0 ? (
+            <div style={S.empty}>Aucune progression HACCP enregistrée. Les données apparaissent quand l'équipe démarre la formation dans l'onglet HACCP.</div>
+          ) : (() => {
+            const byUser = {}
+            haccpProgs.forEach(p => {
+              const uid = p.user_id
+              if (!byUser[uid]) byUser[uid] = { profile: p.profiles, modules: {} }
+              byUser[uid].modules[p.module_id] = p
+            })
+            return Object.entries(byUser).map(([uid, { profile: prof, modules }]) => {
+              const validated  = HACCP_MODULES_LABELS.filter(m => modules[m.id]?.statut === 'valide').length
+              const pct        = Math.round((validated / HACCP_MODULES_LABELS.length) * 100)
+              const name       = prof?.display_name || prof?.name || 'Utilisateur'
+              const barColor   = pct === 100 ? '#10B981' : pct >= 60 ? '#3B82F6' : '#F59E0B'
+              return (
+                <div key={uid} style={{ marginBottom: 16, paddingBottom: 16, borderBottom: '1px solid #F1F5F9' }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:10 }}>
+                    <div style={{ ...S.avatar, background:'#EFF6FF', color:'#2563EB', width:34, height:34, fontSize:12 }}>
+                      {name.charAt(0).toUpperCase()}
+                    </div>
+                    <div style={{ flex:1 }}>
+                      <div style={{ fontSize:13.5, fontWeight:700, color:'#0F172A' }}>{name}</div>
+                      <div style={{ display:'flex', alignItems:'center', gap:8, marginTop:4 }}>
+                        <div style={{ flex:1, height:5, background:'#E2E8F0', borderRadius:99, overflow:'hidden' }}>
+                          <div style={{ height:'100%', width:`${pct}%`, background:barColor, borderRadius:99, transition:'width .3s' }} />
+                        </div>
+                        <span style={{ fontSize:11, color:'#94A3B8', fontWeight:600, flexShrink:0 }}>{validated}/5</span>
+                        {pct === 100 && <span style={{ ...S.badge, background:'#ECFDF5', color:'#059669', flexShrink:0 }}>🎓 Certifié</span>}
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ display:'flex', gap:5, flexWrap:'wrap' }}>
+                    {HACCP_MODULES_LABELS.map(m => {
+                      const p = modules[m.id]
+                      const ok = p?.statut === 'valide'
+                      return (
+                        <div key={m.id} title={`Module ${m.id} : ${m.title}${p?.score_quiz != null ? ` — ${p.score_quiz}%` : ''}`}
+                          style={{ padding:'4px 8px', borderRadius:99, fontSize:11, fontWeight:600, background: ok ? m.color + '18' : '#F1F5F9', color: ok ? m.color : '#94A3B8', border:`1px solid ${ok ? m.color + '44' : '#E2E8F0'}` }}>
+                          {m.icon} M{m.id}{ok && ` ${p.score_quiz}%`}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )
+            })
+          })()}
+        </div>
+      )}
 
       {/* Matrice des droits */}
       <div style={S.card}>

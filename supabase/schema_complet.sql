@@ -538,3 +538,33 @@ create policy "haccp_settings_all" on haccp_settings
   for all
   using      (etablissement_id in (select id from etablissements where owner_id = auth.uid()))
   with check (etablissement_id in (select id from etablissements where owner_id = auth.uid()));
+
+-- HACCP — Formation (Phase 14)
+
+create table if not exists haccp_formation_progression (
+  id               uuid default gen_random_uuid() primary key,
+  etablissement_id uuid references etablissements(id) on delete cascade,
+  user_id          uuid references profiles(id) on delete cascade,
+  module_id        integer not null check (module_id between 1 and 5),
+  statut           text default 'non_commence' check (statut in ('non_commence','en_cours','quiz_en_cours','valide','echoue')),
+  score_quiz       integer,
+  conversation     jsonb default '[]',
+  started_at       timestamptz,
+  completed_at     timestamptz,
+  unique(user_id, module_id)
+);
+
+alter table haccp_formation_progression enable row level security;
+
+drop policy if exists "haccp_formation_all" on haccp_formation_progression;
+
+create policy "haccp_formation_all" on haccp_formation_progression
+  for all
+  using      (
+    etablissement_id in (select id from etablissements where owner_id = auth.uid())
+    or user_id = auth.uid()
+  )
+  with check (
+    etablissement_id in (select id from etablissements where owner_id = auth.uid())
+    or user_id = auth.uid()
+  );
