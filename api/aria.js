@@ -3,6 +3,7 @@
 // Returns: { reply }
 
 import { createClient } from '@supabase/supabase-js'
+import { EXTRA_TOOLS, executeExtraTool } from '../lib/ariaTools.js'
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages'
 const MODEL         = 'claude-sonnet-4-6'
@@ -21,15 +22,15 @@ function getSupabase(accessToken) {
 
 // ── Tool definitions ─────────────────────────────────────────────────────────
 
-const TOOLS_DEFINITION = [
+const BASE_TOOLS = [
   {
     name: 'lire_stock',
-    description: "Lire tout le stock de l'établissement",
+    description: "Lire tout le stock de l'établissement — quantités, DLC, prix, fournisseurs, seuils",
     input_schema: { type: 'object', properties: {}, required: [] },
   },
   {
     name: 'modifier_stock',
-    description: 'Modifier un champ d\'un produit en stock',
+    description: "Modifier un champ d'un produit en stock (quantité, prix, DLC, catégorie…)",
     input_schema: {
       type: 'object',
       properties: {
@@ -59,7 +60,7 @@ const TOOLS_DEFINITION = [
   },
   {
     name: 'lire_recettes',
-    description: 'Lire toutes les recettes',
+    description: 'Lire toutes les recettes avec ingrédients, marges et allergènes',
     input_schema: { type: 'object', properties: {}, required: [] },
   },
   {
@@ -68,19 +69,19 @@ const TOOLS_DEFINITION = [
     input_schema: {
       type: 'object',
       properties: {
-        nom:         { type: 'string' },
-        ingredients: { type: 'array', description: '[{nom, q, u, px}]' },
-        instructions:{ type: 'string' },
-        portions:    { type: 'number' },
-        allergenes:  { type: 'array', items: { type: 'string' } },
-        cout_matiere:{ type: 'number' },
+        nom:          { type: 'string' },
+        ingredients:  { type: 'array', description: '[{nom, q, u, px}]' },
+        instructions: { type: 'string' },
+        portions:     { type: 'number' },
+        allergenes:   { type: 'array', items: { type: 'string' } },
+        cout_matiere: { type: 'number' },
       },
       required: ['nom', 'ingredients'],
     },
   },
   {
     name: 'modifier_recette',
-    description: 'Modifier un champ d\'une recette existante',
+    description: "Modifier un champ d'une recette existante",
     input_schema: {
       type: 'object',
       properties: {
@@ -93,7 +94,7 @@ const TOOLS_DEFINITION = [
   },
   {
     name: 'lire_menus',
-    description: 'Lire tous les menus',
+    description: 'Lire tous les menus avec prix de vente',
     input_schema: { type: 'object', properties: {}, required: [] },
   },
   {
@@ -123,12 +124,12 @@ const TOOLS_DEFINITION = [
   },
   {
     name: 'lire_clotures',
-    description: 'Lire les dernières clôtures de service',
+    description: 'Lire les dernières clôtures de service avec ventes et chiffre d\'affaires',
     input_schema: { type: 'object', properties: {}, required: [] },
   },
   {
     name: 'modifier_couverts_service',
-    description: 'Corriger le nombre de couverts d\'un menu dans une clôture passée',
+    description: "Corriger le nombre de couverts d'un menu dans une clôture passée",
     input_schema: {
       type: 'object',
       properties: {
@@ -141,12 +142,12 @@ const TOOLS_DEFINITION = [
   },
   {
     name: 'lire_fournisseurs',
-    description: 'Lire tous les fournisseurs',
+    description: 'Lire tous les fournisseurs avec coordonnées, jours de livraison et historique',
     input_schema: { type: 'object', properties: {}, required: [] },
   },
   {
     name: 'modifier_fournisseur',
-    description: 'Modifier un fournisseur existant',
+    description: 'Modifier un champ d\'un fournisseur existant (tel, email, adresse, siret…)',
     input_schema: {
       type: 'object',
       properties: {
@@ -159,7 +160,7 @@ const TOOLS_DEFINITION = [
   },
   {
     name: 'upsert_fournisseur',
-    description: 'Créer ou mettre à jour un fournisseur par nom',
+    description: 'Créer ou mettre à jour un fournisseur par nom — utilisé après extraction depuis une facture scannée',
     input_schema: {
       type: 'object',
       properties: {
@@ -174,17 +175,17 @@ const TOOLS_DEFINITION = [
   },
   {
     name: 'lire_temperatures',
-    description: 'Lire l\'historique des températures (50 dernières)',
+    description: "Lire l'historique des températures — 50 derniers relevés avec conformité HACCP",
     input_schema: { type: 'object', properties: {}, required: [] },
   },
   {
     name: 'lire_equipe',
-    description: 'Lire les membres de l\'équipe',
+    description: "Lire les membres de l'équipe avec rôles et informations",
     input_schema: { type: 'object', properties: {}, required: [] },
   },
   {
     name: 'creer_etiquette',
-    description: 'Créer une étiquette DLC/DDM',
+    description: 'Créer une étiquette DLC/DDM pour un produit préparé',
     input_schema: {
       type: 'object',
       properties: {
@@ -200,17 +201,17 @@ const TOOLS_DEFINITION = [
   },
   {
     name: 'lire_commandes',
-    description: 'Lire les dernières commandes / scans',
+    description: 'Lire les derniers bons de livraison et scans reçus',
     input_schema: { type: 'object', properties: {}, required: [] },
   },
   {
     name: 'lire_etablissement',
-    description: 'Lire les informations de l\'établissement',
+    description: "Lire les informations de l'établissement (nom, plan, paramètres)",
     input_schema: { type: 'object', properties: {}, required: [] },
   },
   {
     name: 'modifier_etablissement',
-    description: 'Modifier un paramètre de l\'établissement',
+    description: "Modifier un paramètre de l'établissement",
     input_schema: {
       type: 'object',
       properties: {
@@ -222,9 +223,11 @@ const TOOLS_DEFINITION = [
   },
 ]
 
+const ALL_TOOLS = [...BASE_TOOLS, ...EXTRA_TOOLS]
+
 // ── Tool executor ─────────────────────────────────────────────────────────────
 
-async function executeTool(name, input, { userId, accessToken }) {
+async function executeTool(name, input, { userId, accessToken, etablissementId }) {
   const sb = getSupabase(accessToken)
   if (!sb) return { error: 'Supabase non configuré' }
 
@@ -322,12 +325,12 @@ async function executeTool(name, input, { userId, accessToken }) {
     case 'creer_etiquette': {
       const etiquette = {
         ...input,
-        etablissement_id: userId,
-        base_calcul: input.base_calcul || 'standard',
-        created_by_name: input.created_by_name || 'Aria',
+        etablissement_id:  userId,
+        base_calcul:       input.base_calcul || 'standard',
+        created_by_name:   input.created_by_name || 'Aria',
         statut_impression: 'en_attente',
-        nb_impressions: 0,
-        created_at: new Date().toISOString(),
+        nb_impressions:    0,
+        created_at:        new Date().toISOString(),
       }
       const { data, error } = await sb.from('etiquettes').insert(etiquette).select()
       return error ? { error: error.message } : (data || [])
@@ -348,8 +351,11 @@ async function executeTool(name, input, { userId, accessToken }) {
       const { data, error } = await sb.from('etablissements').update({ [champ]: valeur }).eq('owner_id', userId).select()
       return error ? { error: error.message } : (data || [])
     }
-    default:
+    default: {
+      const extraResult = await executeExtraTool(name, input, { userId, etablissementId, sb })
+      if (extraResult !== null) return extraResult
       return { error: `Outil inconnu : ${name}` }
+    }
   }
 }
 
@@ -375,10 +381,10 @@ function buildRoleSection(role) {
   const info  = ROLE_PERMISSIONS[role]
   if (!info) return ''
   const label = ROLE_LABELS[role] || role
-  let section = `\n## Rôle : ${label}\nDroits : ${info.droits}.`
+  let section = `\n## Rôle actuel : ${label}\nDroits : ${info.droits}.`
   if (info.interdit.length > 0) {
     section += `\nInterdit : ${info.interdit.join(', ')}.`
-    section += `\n\nRÈGLE : si l'utilisateur demande une action non autorisée, réponds exactement : "Je suis désolée, cette action nécessite les droits de Chef ou Second de cuisine."`
+    section += `\n\nRÈGLE ABSOLUE : si l'utilisateur demande une action non autorisée pour son rôle, réponds exactement : "Je suis désolée, cette action nécessite les droits de Chef ou Propriétaire."`
   }
   return section
 }
@@ -387,39 +393,162 @@ function buildSystemPrompt(context) {
   const name = context?.user_name
   const role = context?.user_role
   const who  = name
-    ? `Tu travailles avec ${name}${role ? ` (${ROLE_LABELS[role] || role})` : ''}`
-    : 'Tu assistes le personnel de cuisine'
+    ? `Tu travailles actuellement avec ${name}${role ? ` (${ROLE_LABELS[role] || role})` : ''}.`
+    : "Tu assistes le personnel de cuisine."
 
-  return `Tu es Aria, assistante IA experte en gestion de cuisine professionnelle, intégrée à l'application Aria.
-${who}.
+  return `Tu es Aria, l'intelligence centrale de l'application de gestion de cuisine professionnelle du même nom.
+Tu n'es pas un chatbot. Tu es un agent autonome qui connaît en temps réel l'état de TOUTE l'application et qui agit sans attendre qu'on te le demande.
 
-## Tes capacités
-Tu as accès en LECTURE et en ÉCRITURE à toutes les données de l'établissement via des outils.
-Utilise-les dès qu'un utilisateur demande de lire, créer ou modifier des données.
+${who}
 
-## Outils disponibles
-- Stock : lire_stock, modifier_stock, ajouter_produit_stock
-- Recettes : lire_recettes, creer_recette, modifier_recette
-- Menus : lire_menus, creer_menu, modifier_menu
-- Clôtures : lire_clotures, modifier_couverts_service
-- Fournisseurs : lire_fournisseurs, modifier_fournisseur
-- Températures : lire_temperatures
-- Équipe : lire_equipe
-- Étiquettes DLC : creer_etiquette
-- Commandes : lire_commandes
-- Établissement : lire_etablissement, modifier_etablissement
+════════════════════════
+TON IDENTITÉ
+════════════════════════
+
+Tu es l'assistante la plus complète qu'un professionnel de la restauration puisse avoir. Tu penses comme un chef expérimenté, tu agis comme un manager rigoureux, tu anticipes comme un consultant en restauration.
+
+Tu connais :
+- Chaque produit en stock, sa quantité, sa DLC, son fournisseur, son prix historique
+- Chaque fournisseur : nom, contact, délais, historique de commandes et de prix
+- Chaque membre de l'équipe : rôle, formation HACCP, modules validés, dernière activité
+- Chaque relevé de température : zones, appareils, historique des conformités
+- Chaque recette : ingrédients, marges, allergènes
+- Chaque commande : statut, fournisseur, montant
+- Chaque scan effectué : factures, BL, photos
+- L'état financier de l'établissement en temps réel
+- Le planning et les mises en place en cours
+
+════════════════════════
+TON PRINCIPE FONDAMENTAL
+════════════════════════
+
+Quand tu reçois une information (photo, texte, scan, chiffre, question), tu NE réponds pas seulement à la question posée.
+
+Tu ANALYSES ce que tu reçois et tu croises SYSTÉMATIQUEMENT avec TOUS les modules concernés.
+Puis tu AGIS sur chaque module sans qu'on te le demande.
+
+RÈGLE D'OR : Si tu détectes une information qui peut remplir, corriger, enrichir ou déclencher une action dans n'importe quel module de l'application, tu le fais immédiatement et tu informes l'utilisateur de ce que tu as fait.
+
+════════════════════════
+CE QUE TU FAIS AUTOMATIQUEMENT
+════════════════════════
+
+──────────────────────
+QUAND TU ANALYSES UNE FACTURE OU UN BON DE LIVRAISON :
+──────────────────────
+→ Tu extrais : fournisseur, produits, quantités, prix unitaires, montant total, date, numéro facture, téléphone, email, adresse, SIRET, TVA
+→ Si le fournisseur n'existe pas → tu le crées avec TOUTES ses informations
+→ Si le fournisseur existe → tu mets à jour ses informations manquantes
+→ Tu mets à jour le stock pour chaque produit livré
+→ Tu compares les prix avec l'historique → tu alertes si un prix a augmenté de plus de 5%
+→ Tu enregistres les prix dans prix_historique
+→ Tu génères les étiquettes DLC pour les produits avec DLC identifiée
+→ Tu enregistres le scan en base
+→ Tu informes l'utilisateur de tout ce que tu as fait en une phrase par action
+
+──────────────────────
+QUAND TU ANALYSES UNE PHOTO DE CUISINE OU DE STOCK :
+──────────────────────
+→ Tu identifies les produits visibles
+→ Tu estimes les quantités si possible
+→ Tu proposes une mise à jour du stock
+→ Tu détectes les produits proches de la DLC (emballages, étiquettes visibles)
+→ Tu détectes les non-conformités HACCP visibles (température, hygiène, organisation)
+→ Si non-conformité → tu l'enregistres en HACCP
+→ Tu proposes les actions correctives appropriées
+
+──────────────────────
+QUAND UN RELEVÉ DE TEMPÉRATURE EST HORS NORME :
+──────────────────────
+→ Tu enregistres la non-conformité HACCP automatiquement
+→ Tu vérifies quels produits sont stockés dans l'appareil concerné
+→ Tu identifies les produits à risque (DLC proche ou dépassée)
+→ Tu alertes avec un message d'urgence coloré
+→ Tu proposes l'action corrective : transfert produits, appel technicien, mesure conservatoire
+→ Tu notifies le chef ou propriétaire si disponible
+
+──────────────────────
+QUAND LE STOCK D'UN PRODUIT PASSE SOUS LE SEUIL :
+──────────────────────
+→ Tu identifies le fournisseur habituel
+→ Tu pré-remplis automatiquement le bon de commande
+→ Tu calcules la quantité à commander selon l'historique de consommation
+→ Tu proposes : "Bon de commande prêt pour [fournisseur]. Valider et envoyer ?"
+→ Un seul tap suffit pour envoyer
+
+──────────────────────
+QUAND TU DÉTECTES DES DLC PROCHES OU DÉPASSÉES :
+──────────────────────
+→ Tu alertes immédiatement avec le produit, la quantité et la DLC exacte
+→ Tu proposes une recette utilisant ce produit si disponible dans la base
+→ Tu suggères de retirer le produit si DLC dépassée
+→ Tu enregistres l'action dans les logs HACCP
+
+──────────────────────
+QUAND UN EMPLOYÉ COMMENCE SA FORMATION HACCP :
+──────────────────────
+→ Tu adaptes ton niveau pédagogique à son rôle (cuisinier, plongeur, serveur, chef)
+→ Tu utilises des exemples concrets de son métier au quotidien
+→ Tu mémorises sa progression et reprends exactement où il en était
+→ Si un module expire ou un score est insuffisant → tu le signales au chef automatiquement
+
+──────────────────────
+QUAND TU REÇOIS UNE QUESTION OU UNE DEMANDE :
+──────────────────────
+→ Tu réponds directement et précisément
+→ Tu anticipes la question suivante probable et tu y réponds d'avance si pertinent
+→ Tu signales toujours ce que tu as modifié en base
+→ Tu ne demandes jamais une information que tu peux trouver toi-même en base
+
+════════════════════════
+CE QUE TU NE FAIS JAMAIS
+════════════════════════
+
+→ Tu ne demandes pas "Voulez-vous que je..." si tu peux le faire directement
+→ Tu ne laisses pas un champ vide si tu as l'information disponible
+→ Tu ne réponds pas à une question sans vérifier en base si la réponse y est
+→ Tu ne traites pas une facture partiellement : tout ce qui est extractible est extrait
+→ Tu ne réponds jamais "Je ne sais pas" sans avoir d'abord consulté la base de données
+→ Tu ne proposes pas des actions que tu peux faire toi-même sans confirmation (sauf suppression ou envoi d'email)
+
+════════════════════════
+TON STYLE DE COMMUNICATION
+════════════════════════
+
+→ Direct, professionnel, bienveillant
+→ Langage terrain : tu parles comme quelqu'un qui connaît la cuisine professionnelle
+→ Résumé d'actions en bullet points courts après chaque action multiple
+→ Urgences en rouge 🔴, alertes en orange 🟠, confirmations en vert ✅
+→ Maximum 3 questions par message si besoin de précisions
+→ Toujours terminer par une action proposée ou une confirmation
+
+════════════════════════
+DONNÉES DISPONIBLES EN TEMPS RÉEL
+════════════════════════
+
+Tu as accès via les tools disponibles à :
+- stock (quantités, DLC, seuils, fournisseurs)
+- fournisseurs (coordonnées, historique)
+- prix_historique (évolution des prix)
+- temperatures (relevés, conformité, zones)
+- haccp_zones et haccp_appareils
+- haccp_temperatures
+- haccp_plats_refroidissement
+- haccp_formation_progression
+- recettes (ingrédients, marges, allergènes)
+- mise_en_place (tâches, statuts)
+- commandes (bons de commande, statuts)
+- scans (historique des documents analysés)
+- equipe_membres (rôles, formations)
+- aria_conversations (historique complet)
+- etablissements (infos, plan, settings)
+
+Chaque action que tu effectues en base doit être confirmée à l'utilisateur avec le résultat exact.
 
 ## Calculs HACCP
 - Marge brute = ((prix_vente - cout_matiere) / prix_vente) × 100
 - DLC : mise en place 3j / sous vide 6j / congélation 90j
 - Températures conformes : réfrigération ≤4°C, chaud ≥63°C, réception ≤8°C
-
-## Comportement
-- Français, ton chaleureux et professionnel
-- Utilise les outils pour accéder aux données réelles avant de répondre
-- Confirme avant toute modification importante
-- Direct et actionnable : l'information critique en premier
-- Format concis (listes à puces), pas de titres Markdown sauf pour les rapports longs
 ${buildRoleSection(role)}`
 }
 
@@ -474,6 +603,18 @@ export default async function handler(req, res) {
   const { message, history = [], context, userId, accessToken } = req.body ?? {}
   if (!message?.trim()) return res.status(400).json({ error: 'Champ "message" manquant' })
 
+  // Resolve etablissementId — try context first, then DB lookup
+  let etablissementId = context?.etablissement_id || context?.etablissementId || null
+  if (!etablissementId && userId) {
+    try {
+      const sbLookup = getSupabase(accessToken)
+      if (sbLookup) {
+        const { data: etab } = await sbLookup.from('etablissements').select('id').eq('owner_id', userId).single()
+        if (etab?.id) etablissementId = etab.id
+      }
+    } catch { /* ignore */ }
+  }
+
   const systemPrompt  = buildSystemPrompt(context)
   const contextBlock  = buildContextBlock(context)
   const userContent   = contextBlock
@@ -485,7 +626,7 @@ export default async function handler(req, res) {
     { role: 'user', content: userContent },
   ]
 
-  const toolCtx = { userId, accessToken }
+  const toolCtx  = { userId, accessToken, etablissementId }
   let iterations = 0
 
   try {
@@ -503,7 +644,7 @@ export default async function handler(req, res) {
           model:      MODEL,
           max_tokens: 4096,
           system:     systemPrompt,
-          tools:      TOOLS_DEFINITION,
+          tools:      ALL_TOOLS,
           messages:   conversationMessages,
         }),
       })
