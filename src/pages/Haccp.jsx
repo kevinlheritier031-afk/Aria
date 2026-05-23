@@ -802,13 +802,17 @@ export default function Haccp({ user, profile, fromDashboard, onBack }) {
                   </div>
                 )}
                 {formChat.map((m, i) => {
+                  const isUser = m.role === 'user'
                   const displayContent = m.content?.replace('[QUIZ_READY]', '').trim()
                   return (
-                    <div key={i} style={{ display: 'flex', flexDirection: m.role === 'user' ? 'row-reverse' : 'row', gap: 8, alignItems: 'flex-end' }}>
-                      {m.role === 'assistant' && (
-                        <div style={{ width: 28, height: 28, borderRadius: '50%', background: formModule.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, color: '#fff', flexShrink: 0 }}>✦</div>
+                    <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: isUser ? 'flex-end' : 'flex-start', gap: 4 }}>
+                      {!isUser && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <div style={{ width: 24, height: 24, borderRadius: '50%', background: formModule.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, color: '#fff', flexShrink: 0 }}>✦</div>
+                          <span style={{ fontSize: 11, fontWeight: 700, color: formModule.color }}>Aria</span>
+                        </div>
                       )}
-                      <div style={{ maxWidth: '78%', padding: '10px 14px', fontSize: 13.5, lineHeight: 1.65, whiteSpace: 'pre-wrap', borderRadius: m.role === 'user' ? '16px 4px 16px 16px' : '4px 16px 16px 16px', background: m.role === 'user' ? '#2563EB' : '#F1F5F9', color: m.role === 'user' ? '#fff' : '#0F172A', fontFamily: F }}>
+                      <div style={{ maxWidth: '78%', padding: '10px 14px', fontSize: 13.5, lineHeight: 1.65, whiteSpace: 'pre-wrap', borderRadius: isUser ? '16px 4px 16px 16px' : '4px 16px 16px 16px', background: isUser ? '#2563EB' : '#F1F5F9', color: isUser ? '#fff' : '#0F172A', fontFamily: F }}>
                         {displayContent}
                       </div>
                     </div>
