@@ -93,6 +93,8 @@ const S = {
     padding: '0 2px',
     fontFamily: 'inherit',
     WebkitTapHighlightColor: 'transparent',
+    WebkitAppearance: 'none',
+    appearance: 'none',
   },
   topBar: {
     position: 'absolute',
