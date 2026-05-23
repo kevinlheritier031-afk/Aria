@@ -18,19 +18,19 @@ const F = "'Plus Jakarta Sans','Inter',sans-serif"
 function getTimeSuggestions() {
   const h = new Date().getHours()
   if (h < 11) return [
-    { text:'Quels produits à commander ?',      icon:'🛒', color:'#2563EB', bg:'#EFF6FF' },
-    { text:'Résumé températures de la nuit',    icon:'🌡️', color:'#6366F1', bg:'#EEF2FF' },
-    { text:'Mise en place du jour',             icon:'📋', color:'#10B981', bg:'#ECFDF5' },
+    { text:'Produits à commander',   icon:'🛒', color:'#2563EB', bg:'#EFF6FF' },
+    { text:'Températures nuit',      icon:'🌡️', color:'#6366F1', bg:'#EEF2FF' },
+    { text:'Mise en place',          icon:'📋', color:'#10B981', bg:'#ECFDF5' },
   ]
   if (h < 15) return [
-    { text:'Analyse des marges du service',     icon:'📊', color:'#D97706', bg:'#FFFBEB' },
-    { text:'Alertes DLC urgentes',              icon:'⚠️', color:'#EF4444', bg:'#FEF2F2' },
-    { text:'Recettes disponibles ce soir',      icon:'🍽️', color:'#10B981', bg:'#ECFDF5' },
+    { text:'Marges du service',      icon:'📊', color:'#D97706', bg:'#FFFBEB' },
+    { text:'DLC urgentes',           icon:'⚠️', color:'#EF4444', bg:'#FEF2F2' },
+    { text:'Recettes du soir',       icon:'🍽️', color:'#10B981', bg:'#ECFDF5' },
   ]
   return [
-    { text:'Résumé HACCP de la journée',        icon:'✅', color:'#10B981', bg:'#ECFDF5' },
-    { text:'Optimise mes marges',               icon:'💡', color:'#2563EB', bg:'#EFF6FF' },
-    { text:'Rapport de clôture',                icon:'📄', color:'#6366F1', bg:'#EEF2FF' },
+    { text:'Bilan HACCP',            icon:'✅', color:'#10B981', bg:'#ECFDF5' },
+    { text:'Optimise mes marges',    icon:'💡', color:'#2563EB', bg:'#EFF6FF' },
+    { text:'Rapport de clôture',     icon:'📄', color:'#6366F1', bg:'#EEF2FF' },
   ]
 }
 
@@ -378,17 +378,17 @@ export default function Aria({ stock = [], fournisseurs = [], scanLog = [], user
 
       {/* ── Suggestions rapides ──────────────────────────────────────────── */}
       {showSuggestions && (
-        <div style={{ padding:'0 12px 10px', display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:8, background:'#F8FAFC', flexShrink:0 }}>
+        <div style={{ padding:'0 8px 10px', display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:6, background:'#F8FAFC', flexShrink:0 }}>
           {getTimeSuggestions().map(s => (
             <button
               key={s.text}
               onClick={() => handleSend(s.text)}
-              style={{ padding:'11px 13px', border:`1.5px solid ${s.color}30`, borderRadius:14, background:s.bg, fontSize:12.5, color:'#0F172A', cursor:'pointer', fontFamily:F, textAlign:'left', display:'flex', alignItems:'center', gap:8, lineHeight:1.3, transition:'transform .12s, box-shadow .12s' }}
+              style={{ padding:'8px 6px', border:`1.5px solid ${s.color}30`, borderRadius:12, background:s.bg, fontSize:11, color:'#0F172A', cursor:'pointer', fontFamily:F, textAlign:'left', display:'flex', flexDirection:'column', alignItems:'flex-start', gap:4, lineHeight:1.35, transition:'transform .12s, box-shadow .12s', minWidth:0, overflow:'hidden' }}
               onMouseOver={e => { e.currentTarget.style.transform='translateY(-1px)'; e.currentTarget.style.boxShadow=`0 4px 12px ${s.color}22` }}
               onMouseOut={e =>  { e.currentTarget.style.transform='none'; e.currentTarget.style.boxShadow='none' }}
             >
-              <span style={{ fontSize:18, flexShrink:0 }}>{s.icon}</span>
-              <span style={{ fontWeight:500 }}>{s.text}</span>
+              <span style={{ fontSize:16, flexShrink:0 }}>{s.icon}</span>
+              <span style={{ fontWeight:600, wordBreak:'break-word' }}>{s.text}</span>
             </button>
           ))}
         </div>
