@@ -30,12 +30,12 @@ export default function BottomNav({ page, setPage, alertDlc, alertCmd }) {
               color: active ? '#2563EB' : '#94A3B8',
             }}
           >
-            {/* Top active bar */}
-            {active && <div style={S.topBar} />}
+            {/* Top active bar — hidden for Aria (label-only indicator) */}
+            {active && item.k !== 'aria' && <div style={S.topBar} />}
 
             {/* Icon + badge wrapper */}
             <div style={S.iconWrap}>
-              <span style={{ ...S.icon, fontSize: active ? 22 : 20, transition: 'font-size .15s' }}>
+              <span style={{ ...S.icon, fontSize: active ? 22 : 20, transition: 'font-size .15s', color: (item.k === 'aria' && active) ? '#94A3B8' : 'inherit' }}>
                 {item.emoji}
               </span>
               {badge > 0 && (
