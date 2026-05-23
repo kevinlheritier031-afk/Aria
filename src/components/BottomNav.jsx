@@ -35,9 +35,13 @@ export default function BottomNav({ page, setPage, alertDlc, alertCmd }) {
 
             {/* Icon + badge wrapper */}
             <div style={S.iconWrap}>
-              <span style={{ ...S.icon, fontSize: active ? 22 : 20, transition: 'font-size .15s' }}>
-                {item.emoji}
-              </span>
+              {item.k === 'aria' && active ? (
+                <div style={S.ariaOrb}>{item.emoji}</div>
+              ) : (
+                <span style={{ ...S.icon, fontSize: active ? 22 : 20, transition: 'font-size .15s' }}>
+                  {item.emoji}
+                </span>
+              )}
               {badge > 0 && (
                 <span style={S.badge}>{badge > 99 ? '99+' : badge}</span>
               )}
@@ -122,5 +126,18 @@ const S = {
     fontWeight: 500,
     lineHeight: 1,
     letterSpacing: '.1px',
+  },
+  ariaOrb: {
+    width: 28,
+    height: 28,
+    borderRadius: 9,
+    background: 'linear-gradient(135deg, #3B82F6 0%, #1D4ED8 100%)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: 14,
+    color: '#fff',
+    boxShadow: '0 2px 8px rgba(37,99,235,.4)',
+    flexShrink: 0,
   },
 }
