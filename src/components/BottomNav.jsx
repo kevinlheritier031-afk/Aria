@@ -10,6 +10,21 @@ if (typeof document !== 'undefined' && !document.getElementById(STYLE_ID)) {
       from { transform: scaleX(0); }
       to   { transform: scaleX(1); }
     }
+    @media (max-width: 768px) {
+      button.bnav-aria-active {
+        background: none !important;
+        -webkit-appearance: none;
+        appearance: none;
+      }
+      button.bnav-aria-active > div {
+        background: none !important;
+        border-radius: 0 !important;
+        box-shadow: none !important;
+      }
+      button.bnav-aria-active > div > span {
+        background: none !important;
+      }
+    }
   `
   document.head.appendChild(s)
 }
@@ -25,6 +40,7 @@ export default function BottomNav({ page, setPage, alertDlc, alertCmd }) {
           <button
             key={item.k}
             onClick={() => setPage(item.k)}
+            className={active && item.k === 'aria' ? 'bnav-aria-active' : undefined}
             style={{
               ...S.item,
               color: active ? '#2563EB' : '#94A3B8',
