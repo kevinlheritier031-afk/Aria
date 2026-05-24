@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { dlcStatus } from '../constants'
+import { calculateConformiteScore } from '../lib/conformiteScore'
 
 const F  = "'Plus Jakarta Sans','Inter',sans-serif"
 const FM = "'DM Mono','JetBrains Mono',monospace"
@@ -40,6 +41,7 @@ function TypingDots() {
 export default function Dashboard({ user, stock = [], scanLog = [], prixHist = [], fournisseurs = [], setPage, profile }) {
   const [ariaMsg,     setAriaMsg]     = useState('')
   const [ariaLoading, setAriaLoading] = useState(true)
+  const [conformite,  setConformite]  = useState(null)
 
   // Stats
   const expired  = stock.filter(i => dlcStatus(i.dlc) === 'expired').length
@@ -58,6 +60,13 @@ export default function Dashboard({ user, stock = [], scanLog = [], prixHist = [
   const greeting  = hour < 18 ? 'Bonjour' : 'Bonsoir'
   const dateStr   = new Date().toLocaleDateString('fr-FR', { weekday:'long', day:'numeric', month:'long', year:'numeric' })
   const dateLabel = dateStr.charAt(0).toUpperCase() + dateStr.slice(1)
+
+  // Conformité HACCP
+  useEffect(() => {
+    const eid = profile?.etablissement_id
+    if (!eid) return
+    calculateConformiteScore(eid).then(setConformite).catch(() => {})
+  }, [profile?.etablissement_id])
 
   // Aria message du jour (once per session)
   useEffect(() => {
@@ -174,6 +183,35 @@ export default function Dashboard({ user, stock = [], scanLog = [], prixHist = [
                 {ruptures > 0 ? '📦' : '✅'} {ruptures > 0 ? `${ruptures} rupture${ruptures > 1 ? 's' : ''}` : 'Stock OK'}
               </button>
             </div>
+          )}
+
+          {/* HACCP Conformité */}
+          {conformite && (
+            <button
+              onClick={() => setPage?.('haccp')}
+              style={{ display:'block', width:'100%', marginTop:12, padding:'10px 12px', borderRadius:12, border:'1px solid #E2E8F0', background:'#F8FAFC', cursor:'pointer', fontFamily:F, textAlign:'left' }}
+            >
+              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:6 }}>
+                <span style={{ fontSize:12.5, fontWeight:600, color:'#475569' }}>🌡️ Conformité HACCP</span>
+                <span style={{
+                  fontSize:12, fontWeight:700,
+                  color: conformite.couleur === 'green' ? '#16A34A' : conformite.couleur === 'orange' ? '#F97316' : '#94A3B8',
+                  background: conformite.couleur === 'green' ? '#F0FDF4' : conformite.couleur === 'orange' ? '#FFF7ED' : '#F8FAFC',
+                  padding:'2px 8px', borderRadius:99,
+                }}>
+                  {conformite.score}% · {conformite.niveau}
+                </span>
+              </div>
+              <div style={{ height:6, background:'#E2E8F0', borderRadius:4, overflow:'hidden' }}>
+                <div style={{
+                  height:'100%',
+                  width:`${conformite.score}%`,
+                  background: conformite.couleur === 'green' ? '#16A34A' : conformite.couleur === 'orange' ? '#F97316' : '#94A3B8',
+                  borderRadius:4,
+                  transition:'width .5s',
+                }} />
+              </div>
+            </button>
           )}
         </div>
 

@@ -161,13 +161,45 @@ export default function Onboarding({ user, onComplete }) {
   const [step,      setStep]      = useState(0)
   const [choices,   setChoices]   = useState([])
 
+  // HACCP config phase states
+  const [haccpStep,      setHaccpStep]      = useState(1)
+  const [haccpZones,     setHaccpZones]     = useState([])
+  const [haccpAppareils, setHaccpAppareils] = useState([])
+  const [haccpServices,  setHaccpServices]  = useState(null)
+
   const apiHistory         = useRef([])
   const bottomRef          = useRef(null)
   const inputRef           = useRef(null)
   const initialized        = useRef(false)
   const etablissementIdRef = useRef(null)
+  const pendingHaccpRef    = useRef(null)
   // Cache du prénom collecté en step identity, réutilisé dans les upserts suivants
   const userNameRef        = useRef('')
+
+  const HACCP_ZONES_LIST = ['Cuisine', 'Laboratoire', 'Légumerie', 'Pâtisserie', 'Cave', 'Autre']
+  const HACCP_APPAREILS_LIST = [
+    { key: 'frigo',         label: 'Frigo',          emoji: '🧊', temp_min: 0,   temp_max: 4   },
+    { key: 'congelateur',   label: 'Congélateur',    emoji: '❄️', temp_min: -22, temp_max: -18 },
+    { key: 'chambre_froide',label: 'Chambre froide', emoji: '🏭', temp_min: 0,   temp_max: 4   },
+    { key: 'bain_marie',    label: 'Bain-marie',     emoji: '🔥', temp_min: 63,  temp_max: 85  },
+  ]
+  const HACCP_SERVICES = [1, 2, 3, 'Variable']
+
+  function finishHaccpConfig() {
+    const zones = []
+    const zones_src = haccpZones.length ? haccpZones : ['Cuisine']
+    const apps_src  = haccpAppareils.length ? haccpAppareils : ['frigo', 'congelateur']
+    for (const zoneName of zones_src) {
+      for (const appKey of apps_src) {
+        const app = HACCP_APPAREILS_LIST.find(a => a.key === appKey)
+        if (app) {
+          zones.push({ nom: `${app.label} — ${zoneName}`, temp_min: app.temp_min, temp_max: app.temp_max })
+        }
+      }
+    }
+    pendingHaccpRef.current = { zones, nb_services: haccpServices }
+    setPhase('chat')
+  }
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -222,6 +254,30 @@ export default function Onboarding({ user, onComplete }) {
         else console.log('✅ INSERT OK:', 'profiles', profileData)
 
         addStatus('✓ Établissement enregistré')
+
+        // Save pending HACCP config collected before chat
+        if (pendingHaccpRef.current) {
+          const { zones, nb_services } = pendingHaccpRef.current
+          pendingHaccpRef.current = null
+          try {
+            if (zones?.length) {
+              const { data: existingZones } = await supabase.from('haccp_zones').select('id').eq('etablissement_id', EID).limit(1)
+              if (!existingZones?.length) {
+                for (const zone of zones) {
+                  await supabase.from('haccp_zones').insert({ ...zone, etablissement_id: EID })
+                }
+                addStatus(`✓ ${zones.length} appareil(s) HACCP configuré(s)`)
+              }
+            }
+            if (nb_services) {
+              const { data: etabRow } = await supabase.from('etablissements').select('settings').eq('id', EID).single()
+              const curSettings = etabRow?.settings || {}
+              await supabase.from('etablissements').update({ settings: { ...curSettings, nb_services } }).eq('id', EID)
+            }
+          } catch (haccpErr) {
+            console.error('[Onboarding] HACCP config save error:', haccpErr)
+          }
+        }
       }
 
       // ── ROLE ──────────────────────────────────────────────────────────────
@@ -459,7 +515,11 @@ export default function Onboarding({ user, onComplete }) {
     setNameLoading(false)
     if (error) { setNameError('Erreur : ' + error.message); return }
     console.log('display_name sauvegardé:', displayName)
-    setPhase('chat')
+    setHaccpStep(1)
+    setHaccpZones([])
+    setHaccpAppareils([])
+    setHaccpServices(null)
+    setPhase('haccp_config')
   }
 
   // ── Init ──────────────────────────────────────────────────────────────────────
@@ -511,14 +571,18 @@ export default function Onboarding({ user, onComplete }) {
     ? 0
     : phase === 'name'
       ? 10
-      : Math.round((step + 2) / 10 * 100)
+      : phase === 'haccp_config'
+        ? 18
+        : Math.round((step + 3) / 11 * 100)
   const stepLabel = phase === 'password'
-    ? 'Étape 1/10 — 🔐 Mot de passe'
+    ? 'Étape 1/11 — 🔐 Mot de passe'
     : phase === 'name'
-      ? 'Étape 2/10 — 👤 Votre identité'
-      : step < 8
-        ? `Étape ${step + 3}/10 — ${STEP_LABELS[STEPS[step]] || ''}`
-        : '✓ Configuration terminée !'
+      ? 'Étape 2/11 — 👤 Votre identité'
+      : phase === 'haccp_config'
+        ? `Étape 3/11 — 🌡️ Configuration HACCP (${haccpStep}/3)`
+        : step < 8
+          ? `Étape ${step + 4}/11 — ${STEP_LABELS[STEPS[step]] || ''}`
+          : '✓ Configuration terminée !'
 
   return (
     <div style={{ display:'flex', flexDirection:'column', height:'100dvh', background:'#F8FAFC', fontFamily:"'Plus Jakarta Sans','DM Sans',sans-serif", overflow:'hidden' }}>
@@ -684,6 +748,114 @@ export default function Onboarding({ user, onComplete }) {
                 {nameLoading ? 'Enregistrement…' : 'Continuer →'}
               </button>
             </div>
+
+          </div>
+        </div>
+
+      ) : phase === 'haccp_config' ? (
+
+        /* ── Étape 3 : configuration HACCP ── */
+        <div style={{ flex:1, overflowY:'auto', padding:'20px 16px 32px' }}>
+          <div style={{ maxWidth:440, margin:'0 auto' }}>
+
+            {/* Aria prompt bubble */}
+            <div style={{ display:'flex', gap:10, alignItems:'flex-start', marginBottom:24 }}>
+              <div style={{ width:34, height:34, borderRadius:'50%', background:'linear-gradient(135deg,#2563EB,#7C3AED)', display:'flex', alignItems:'center', justifyContent:'center', color:'#fff', fontSize:14, flexShrink:0, marginTop:2 }}>✦</div>
+              <div style={{ padding:'11px 15px', borderRadius:'4px 16px 16px 16px', background:'#F1F5F9', fontSize:14, lineHeight:1.55, color:'#1E293B' }}>
+                {haccpStep === 1 && 'Maintenant, configurons votre espace HACCP. Quelles zones avez-vous dans votre établissement ?'}
+                {haccpStep === 2 && 'Quels appareils de conservation utilisez-vous ?'}
+                {haccpStep === 3 && 'Combien de services chauds effectuez-vous par jour ?'}
+              </div>
+            </div>
+
+            {/* Step 1 — Zones */}
+            {haccpStep === 1 && (
+              <>
+                <div style={{ display:'flex', flexWrap:'wrap', gap:8, marginBottom:28 }}>
+                  {HACCP_ZONES_LIST.map(z => {
+                    const active = haccpZones.includes(z)
+                    return (
+                      <button
+                        key={z}
+                        onClick={() => setHaccpZones(prev => active ? prev.filter(x => x !== z) : [...prev, z])}
+                        style={{ padding:'9px 16px', borderRadius:20, border: active ? '1.5px solid #2563EB' : '1.5px solid #E2E8F0', background: active ? '#DBEAFE' : '#F8FAFC', color: active ? '#1D4ED8' : '#64748B', fontSize:13.5, fontWeight:500, cursor:'pointer', fontFamily:'inherit', transition:'all .15s' }}
+                      >
+                        {active ? '✓ ' : ''}{z}
+                      </button>
+                    )
+                  })}
+                </div>
+                <button
+                  onClick={() => setHaccpStep(2)}
+                  style={{ width:'100%', padding:'13px', borderRadius:12, border:'none', background:'linear-gradient(135deg,#2563EB,#1D4ED8)', color:'#fff', fontSize:14, fontWeight:600, cursor:'pointer', fontFamily:'inherit' }}
+                >
+                  Continuer →
+                </button>
+                <button onClick={finishHaccpConfig} style={{ width:'100%', padding:'10px', borderRadius:12, border:'none', background:'none', color:'#94A3B8', fontSize:13, cursor:'pointer', fontFamily:'inherit', marginTop:8 }}>
+                  Passer cette étape
+                </button>
+              </>
+            )}
+
+            {/* Step 2 — Appareils */}
+            {haccpStep === 2 && (
+              <>
+                <div style={{ display:'flex', flexWrap:'wrap', gap:8, marginBottom:28 }}>
+                  {HACCP_APPAREILS_LIST.map(app => {
+                    const active = haccpAppareils.includes(app.key)
+                    return (
+                      <button
+                        key={app.key}
+                        onClick={() => setHaccpAppareils(prev => active ? prev.filter(x => x !== app.key) : [...prev, app.key])}
+                        style={{ padding:'9px 16px', borderRadius:20, border: active ? '1.5px solid #2563EB' : '1.5px solid #E2E8F0', background: active ? '#DBEAFE' : '#F8FAFC', color: active ? '#1D4ED8' : '#64748B', fontSize:13.5, fontWeight:500, cursor:'pointer', fontFamily:'inherit', transition:'all .15s', display:'flex', alignItems:'center', gap:6 }}
+                      >
+                        <span>{app.emoji}</span>
+                        {active ? '✓ ' : ''}{app.label}
+                        <span style={{ fontSize:11, color: active ? '#3B82F6' : '#94A3B8' }}>({app.temp_min > 0 ? '+' : ''}{app.temp_min}°→{app.temp_max > 0 ? '+' : ''}{app.temp_max}°)</span>
+                      </button>
+                    )
+                  })}
+                </div>
+                <button
+                  onClick={() => setHaccpStep(3)}
+                  style={{ width:'100%', padding:'13px', borderRadius:12, border:'none', background:'linear-gradient(135deg,#2563EB,#1D4ED8)', color:'#fff', fontSize:14, fontWeight:600, cursor:'pointer', fontFamily:'inherit' }}
+                >
+                  Continuer →
+                </button>
+                <button onClick={() => setHaccpStep(1)} style={{ width:'100%', padding:'10px', borderRadius:12, border:'none', background:'none', color:'#94A3B8', fontSize:13, cursor:'pointer', fontFamily:'inherit', marginTop:8 }}>
+                  ← Retour
+                </button>
+              </>
+            )}
+
+            {/* Step 3 — Services chauds */}
+            {haccpStep === 3 && (
+              <>
+                <div style={{ display:'flex', flexWrap:'wrap', gap:8, marginBottom:28 }}>
+                  {HACCP_SERVICES.map(s => {
+                    const active = haccpServices === s
+                    return (
+                      <button
+                        key={String(s)}
+                        onClick={() => setHaccpServices(s)}
+                        style={{ padding:'9px 20px', borderRadius:20, border: active ? '1.5px solid #2563EB' : '1.5px solid #E2E8F0', background: active ? '#DBEAFE' : '#F8FAFC', color: active ? '#1D4ED8' : '#64748B', fontSize:13.5, fontWeight:500, cursor:'pointer', fontFamily:'inherit', transition:'all .15s' }}
+                      >
+                        {active ? '✓ ' : ''}{String(s)} service{typeof s === 'number' && s > 1 ? 's' : ''}
+                      </button>
+                    )
+                  })}
+                </div>
+                <button
+                  onClick={finishHaccpConfig}
+                  style={{ width:'100%', padding:'13px', borderRadius:12, border:'none', background:'linear-gradient(135deg,#2563EB,#1D4ED8)', color:'#fff', fontSize:14, fontWeight:600, cursor:'pointer', fontFamily:'inherit' }}
+                >
+                  Terminer la configuration →
+                </button>
+                <button onClick={() => setHaccpStep(2)} style={{ width:'100%', padding:'10px', borderRadius:12, border:'none', background:'none', color:'#94A3B8', fontSize:13, cursor:'pointer', fontFamily:'inherit', marginTop:8 }}>
+                  ← Retour
+                </button>
+              </>
+            )}
 
           </div>
         </div>

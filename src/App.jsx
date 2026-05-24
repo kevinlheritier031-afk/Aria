@@ -451,6 +451,7 @@ export default function App() {
                 scanLog={scanLog}
                 fromDashboard={navSource === 'dashboard'}
                 onBack={handleBack}
+                setPage={setPageClear}
               />
             )}
             {page === 'business' && (

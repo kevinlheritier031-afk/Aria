@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
+import { calculateConformiteScore } from '../lib/conformiteScore'
 
 const F = "'Plus Jakarta Sans','DM Sans','Inter',sans-serif"
 
@@ -24,6 +25,68 @@ function fmtTime(ts) {
 function elapsed(ts) {
   const m = Math.floor((Date.now() - new Date(ts)) / 60000)
   return m < 60 ? `${m} min` : `${Math.floor(m / 60)}h${String(m % 60).padStart(2, '0')}`
+}
+
+// ── ConformiteModal ────────────────────────────────────────────────────────────
+
+function ConformiteModal({ conformite, onClose }) {
+  const { score, niveau, couleur, détails = {} } = conformite
+  const scoreColor = couleur === 'green' ? '#10B981' : couleur === 'orange' ? '#F59E0B' : '#94A3B8'
+
+  const sections = [
+    {
+      title: 'Activation des modules (40 pts max)',
+      items: [
+        { label: '🌡️ Froid',          pts: détails.froid?.inactive ? 0 : 10,          max: 10 },
+        { label: '🔴 Chaud',          pts: détails.chaud?.inactive ? 0 : 10,          max: 10 },
+        { label: '❄️ Refroidissement', pts: détails.refroidissement?.inactive ? 0 : 10, max: 10 },
+        { label: '🎓 Formation',       pts: détails.formation?.inactive ? 0 : 10,       max: 10 },
+      ],
+    },
+    {
+      title: 'Utilisation réelle (60 pts max)',
+      items: [
+        { label: '🌡️ Relevés froid',   pts: détails.froid?.points ?? 0,          max: 15, sub: `${détails.froid?.jours ?? 0}/7 j valides` },
+        { label: '🔴 Relevés chaud',   pts: détails.chaud?.points ?? 0,          max: 15, sub: `${détails.chaud?.jours ?? 0}/7 j` },
+        { label: '❄️ Refroid.',        pts: détails.refroidissement?.points ?? 0, max: 10, sub: `${détails.refroidissement?.count ?? 0} relevés` },
+        { label: '🎓 Équipe formée',   pts: détails.formation?.points ?? 0,       max: 20, sub: `${détails.formation?.formes ?? 0}/${détails.formation?.total ?? 0} membres` },
+      ],
+    },
+  ]
+
+  return (
+    <div style={S.overlay} onClick={onClose}>
+      <div style={{ ...S.sheet, padding: '24px 20px 40px' }} onClick={e => e.stopPropagation()}>
+        <div style={S.handle} />
+        <div style={{ textAlign: 'center', marginBottom: 20 }}>
+          <div style={{ fontSize: 52, fontWeight: 800, color: scoreColor, lineHeight: 1 }}>{score}%</div>
+          <div style={{ fontSize: 13.5, color: '#64748B', marginTop: 6 }}>
+            Conformité HACCP — niveau&nbsp;
+            <strong>{niveau === 'complet' ? '🏆 Complet' : niveau === 'partiel' ? '📈 Partiel' : '🚀 Découverte'}</strong>
+          </div>
+          {/* Progress bar */}
+          <div style={{ height: 8, background: '#E2E8F0', borderRadius: 99, marginTop: 14, overflow: 'hidden' }}>
+            <div style={{ height: '100%', width: `${score}%`, background: scoreColor, borderRadius: 99, transition: 'width .5s' }} />
+          </div>
+        </div>
+
+        {sections.map(section => (
+          <div key={section.title} style={{ marginBottom: 16 }}>
+            <div style={{ fontSize: 10.5, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '.6px', marginBottom: 8 }}>{section.title}</div>
+            {section.items.map(item => (
+              <div key={item.label} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 7 }}>
+                <span style={{ fontSize: 12.5, color: '#0F172A', flex: 1 }}>{item.label}</span>
+                {item.sub && <span style={{ fontSize: 11, color: '#94A3B8' }}>{item.sub}</span>}
+                <span style={{ fontSize: 12, fontWeight: 700, color: item.pts === item.max ? '#10B981' : '#475569', width: 36, textAlign: 'right', flexShrink: 0 }}>{item.pts}/{item.max}</span>
+              </div>
+            ))}
+          </div>
+        ))}
+
+        <button onClick={onClose} style={{ ...S.btnP, width: '100%', marginTop: 4 }}>Fermer</button>
+      </div>
+    </div>
+  )
 }
 
 // ── TempModal ──────────────────────────────────────────────────────────────────
@@ -106,12 +169,18 @@ function FeedbackModal({ conforme, valeur, seuil, onClose }) {
 
 // ── Main ───────────────────────────────────────────────────────────────────────
 
-export default function Haccp({ user, profile, fromDashboard, onBack }) {
-  const [tab,     setTab]     = useState(0)
-  const [eid,     setEid]     = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [saving,  setSaving]  = useState(false)
+export default function Haccp({ user, profile, fromDashboard, onBack, setPage }) {
+  const [view,     setView]     = useState('home') // 'home'|'releves'|'froid'|'chaud'|'refroid'|'formation'
+  const [eid,      setEid]      = useState(null)
+  const [loading,  setLoading]  = useState(true)
+  const [saving,   setSaving]   = useState(false)
   const [feedback, setFeedback] = useState(null)
+
+  // Modules & conformité
+  const [modules,        setModules]        = useState({})
+  const [conformite,     setConformite]     = useState(null)
+  const [conformiteModal, setConformiteModal] = useState(false)
+  const [equipeCount,    setEquipeCount]    = useState(0)
 
   // Froid
   const [zones,      setZones]      = useState([])
@@ -144,7 +213,6 @@ export default function Haccp({ user, profile, fromDashboard, onBack }) {
   const [newPlatNom,   setNewPlatNom]   = useState('')
   const [newPlatHeure, setNewPlatHeure] = useState(() => new Date().toTimeString().slice(0, 5))
 
-  // Timer for refroidissement display
   const [, setTick] = useState(0)
   useEffect(() => {
     const id = setInterval(() => setTick(t => t + 1), 30000)
@@ -171,36 +239,53 @@ export default function Haccp({ user, profile, fromDashboard, onBack }) {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const { data: etab } = await supabase.from('etablissements').select('id').eq('owner_id', user.id).single()
+      const { data: etab } = await supabase.from('etablissements').select('id, settings').eq('owner_id', user.id).single()
       if (!etab) return
       const realEid = etab.id
       setEid(realEid)
+      setModules(etab.settings?.modules || {})
 
       const since24h = new Date(Date.now() - 86400000).toISOString()
-      const [zonesRes, apRes, settRes, platsRes, tempsRes, formRes] = await Promise.all([
+      const [zonesRes, apRes, settRes, platsRes, tempsRes, formRes, equipeRes] = await Promise.all([
         supabase.from('haccp_zones').select('*').eq('etablissement_id', realEid).order('nom'),
         supabase.from('haccp_appareils').select('*').eq('etablissement_id', realEid).order('nom'),
         supabase.from('haccp_settings').select('*').eq('etablissement_id', realEid).maybeSingle(),
         supabase.from('haccp_plats_refroidissement').select('*').eq('etablissement_id', realEid).order('created_at', { ascending: false }),
         supabase.from('haccp_temperatures').select('*').eq('etablissement_id', realEid).gte('created_at', since24h).order('created_at', { ascending: false }),
         supabase.from('haccp_formation_progression').select('*').eq('etablissement_id', realEid).eq('user_id', user.id),
+        supabase.from('equipe_membres').select('id').eq('etablissement_id', realEid),
       ])
 
-      if (zonesRes.data)    setZones(zonesRes.data)
-      if (apRes.data)       setAppareils(apRes.data)
-      if (settRes.data)     setSettings(settRes.data)
-      if (tempsRes.data)    setTemps(tempsRes.data)
-      if (formRes.data)     setFormProgs(formRes.data)
+      if (zonesRes.data)  setZones(zonesRes.data)
+      if (apRes.data)     setAppareils(apRes.data)
+      if (settRes.data)   setSettings(settRes.data)
+      if (tempsRes.data)  setTemps(tempsRes.data)
+      if (formRes.data)   setFormProgs(formRes.data)
+      if (equipeRes.data) setEquipeCount(equipeRes.data.length)
       if (platsRes.data) {
         setPlats(platsRes.data.filter(p => p.statut === 'en_cours'))
         setPlatsDone(platsRes.data.filter(p => p.statut !== 'en_cours' && new Date(p.created_at) > new Date(Date.now() - 86400000)))
       }
+
+      calculateConformiteScore(realEid).then(setConformite).catch(() => {})
     } finally {
       setLoading(false)
     }
   }, [user.id])
 
   useEffect(() => { load() }, [load])
+
+  // ── Module helpers ──────────────────────────────────────────────────────────
+  const isActive = (key) => modules[key] !== false
+  const relevesActive = isActive('haccp_froid') || isActive('haccp_chaud') || isActive('haccp_refroidissement')
+  const formationActive = isActive('haccp_formation')
+
+  // ── Navigation ──────────────────────────────────────────────────────────────
+  const goBack = () => {
+    if (['froid', 'chaud', 'refroid'].includes(view)) { setView('releves'); return }
+    if (view === 'releves' || view === 'formation')   { setView('home'); return }
+    if (fromDashboard) onBack?.()
+  }
 
   // ── Froid ──────────────────────────────────────────────────────────────────
   const takeFroidTemp = async (valeur) => {
@@ -293,7 +378,6 @@ export default function Haccp({ user, profile, fromDashboard, onBack }) {
     const newTemps = tData ? [tData, ...temps] : temps
     setTemps(newTemps)
 
-    // Check completion
     const platTemps = newTemps.filter(t => t.type === 'refroidissement' && t.plat_nom === plat.nom)
     const nonConf   = platTemps.some(t => t.conforme === false)
     const allDone   = ETAPES.every(e => platTemps.some(t => t.refroidissement_etape === e.key))
@@ -326,7 +410,7 @@ export default function Haccp({ user, profile, fromDashboard, onBack }) {
 
   const sendFormChat = async (msg) => {
     if (!msg?.trim() || formChatLoading || !eid) return
-    const newMsg = { role: 'user', content: msg }
+    const newMsg  = { role: 'user', content: msg }
     const newChat = [...formChat, newMsg]
     setFormChat(newChat)
     setFormChatInput('')
@@ -335,27 +419,20 @@ export default function Haccp({ user, profile, fromDashboard, onBack }) {
       const res  = await fetch('/api/formation-chat', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          module_id: formModule.id,
-          history:   formChat.slice(-16),
-          message:   msg,
-        }),
+        body: JSON.stringify({ module_id: formModule.id, history: formChat.slice(-16), message: msg }),
       })
       const data  = await res.json()
       const reply = data.reply || 'Désolée, je n\'ai pas pu répondre.'
       const assistantMsg = { role: 'assistant', content: reply }
-      const finalChat = [...newChat, assistantMsg]
+      const finalChat    = [...newChat, assistantMsg]
       setFormChat(finalChat)
       if (reply.includes('[QUIZ_READY]')) setFormQuizReady(true)
 
       const prog = formProgs.find(p => p.module_id === formModule.id)
       await supabase.from('haccp_formation_progression').upsert({
-        etablissement_id: eid,
-        user_id:          user.id,
-        module_id:        formModule.id,
-        statut:           'en_cours',
-        conversation:     finalChat,
-        started_at:       prog?.started_at || new Date().toISOString(),
+        etablissement_id: eid, user_id: user.id, module_id: formModule.id,
+        statut: 'en_cours', conversation: finalChat,
+        started_at: prog?.started_at || new Date().toISOString(),
       }, { onConflict: 'user_id,module_id' })
       setFormProgs(prev => {
         const existing = prev.find(p => p.module_id === formModule.id)
@@ -401,22 +478,19 @@ export default function Haccp({ user, profile, fromDashboard, onBack }) {
     setFormView('result')
     setFormSaving(true)
     await supabase.from('haccp_formation_progression').upsert({
-      etablissement_id: eid,
-      user_id:          user.id,
-      module_id:        formModule.id,
-      statut,
-      score_quiz:       score,
-      completed_at:     passed ? new Date().toISOString() : null,
+      etablissement_id: eid, user_id: user.id, module_id: formModule.id,
+      statut, score_quiz: score,
+      completed_at: passed ? new Date().toISOString() : null,
     }, { onConflict: 'user_id,module_id' })
     setFormProgs(prev => prev.map(p => p.module_id === formModule.id ? { ...p, statut, score_quiz: score } : p))
     setFormSaving(false)
   }
 
   const printAttestation = () => {
-    const etabName  = profile?.etablissement_nom || profile?.name || 'Établissement'
-    const userName  = profile?.display_name || profile?.name || 'Stagiaire'
-    const dateStr   = new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })
-    const rows = FORM_MODULES.map(m => {
+    const etabName = profile?.etablissement_nom || profile?.name || 'Établissement'
+    const userName = profile?.display_name || profile?.name || 'Stagiaire'
+    const dateStr  = new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })
+    const rows     = FORM_MODULES.map(m => {
       const p = formProgs.find(x => x.module_id === m.id)
       return `<tr>
         <td style="padding:8px 12px;border-bottom:1px solid #E2E8F0;">${m.icon} ${m.title}</td>
@@ -456,14 +530,13 @@ export default function Haccp({ user, profile, fromDashboard, onBack }) {
 </table>
 <div class="footer">
   Cette attestation est générée automatiquement par l'application Aria. Elle certifie que le bénéficiaire a suivi et validé les 5 modules de formation HACCP conformément au référentiel de l'arrêté du 12 février 2024.
-  La valeur probante de ce document peut être présentée à la DDPP en cas de contrôle.
 </div>
 <script>window.onload = () => { window.print() }</script>
 </body></html>`)
     win.document.close()
   }
 
-  // ── Derived ─────────────────────────────────────────────────────────────────
+  // ── Loading ─────────────────────────────────────────────────────────────────
   if (loading) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 300 }}>
@@ -472,12 +545,25 @@ export default function Haccp({ user, profile, fromDashboard, onBack }) {
     )
   }
 
-  const todayStart  = new Date(); todayStart.setHours(0, 0, 0, 0)
-  const todayTemps  = temps.filter(t => new Date(t.created_at) >= todayStart)
-  const chaudToday  = todayTemps.filter(t => t.type === 'chaud')
-  const nb          = settings?.nb_prises_chaud_par_service || 2
-  const froidZones  = zones.filter(z => (z.type || 'froid') !== 'chaud')
+  // ── Derived ─────────────────────────────────────────────────────────────────
+  const todayStart   = new Date(); todayStart.setHours(0, 0, 0, 0)
+  const todayTemps   = temps.filter(t => new Date(t.created_at) >= todayStart)
+  const chaudToday   = todayTemps.filter(t => t.type === 'chaud')
+  const froidToday   = todayTemps.filter(t => t.type === 'froid')
+  const refroidToday = todayTemps.filter(t => t.type === 'refroidissement')
+  const nb           = settings?.nb_prises_chaud_par_service || 2
+  const froidZones   = zones.filter(z => (z.type || 'froid') !== 'chaud')
 
+  const formesCount = formProgs.filter(p => p.statut === 'valide').length
+  const enCours     = formProgs.filter(p => p.statut === 'en_cours').length
+
+  const scoreColor = conformite?.couleur === 'green' ? '#10B981' : conformite?.couleur === 'orange' ? '#F59E0B' : '#94A3B8'
+  const scoreEmoji = conformite?.couleur === 'green' ? '🟢' : conformite?.couleur === 'orange' ? '🟠' : '⚪'
+
+  // ── Locked card helper ───────────────────────────────────────────────────────
+  const goToModules = () => setPage?.('parametres')
+
+  // ── Render ───────────────────────────────────────────────────────────────────
   return (
     <>
       <style>{`
@@ -492,29 +578,196 @@ export default function Haccp({ user, profile, fromDashboard, onBack }) {
         @keyframes ptr-spin { to { transform: rotate(360deg); } }
       `}</style>
 
-      <div style={{ fontFamily: F, maxWidth: 640, margin: '0 auto', paddingBottom: 80 }}>
+      {conformiteModal && conformite && (
+        <ConformiteModal conformite={conformite} onClose={() => setConformiteModal(false)} />
+      )}
 
-        {fromDashboard && (
-          <button onClick={onBack} style={{ display: 'flex', alignItems: 'center', gap: 4, margin: '12px 16px 0', background: 'none', border: 'none', color: '#2563EB', fontWeight: 600, fontSize: 14, cursor: 'pointer', padding: 0, fontFamily: F }}>
+      {/* ── Sticky Header ── */}
+      <div style={{ position: 'sticky', top: 0, zIndex: 20, background: '#fff', borderBottom: '1px solid #E2E8F0', padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 10, fontFamily: F }}>
+        {(view !== 'home' || fromDashboard) && (
+          <button onClick={goBack} style={{ background: 'none', border: 'none', color: '#2563EB', fontWeight: 600, fontSize: 14, cursor: 'pointer', padding: '0 4px 0 0', fontFamily: F, flexShrink: 0 }}>
             ← Retour
           </button>
         )}
-
-        {/* Tabs */}
-        <div style={{ display: 'flex', padding: '14px 16px 0', gap: 4, borderBottom: '1px solid #E2E8F0', background: '#fff', position: 'sticky', top: 0, zIndex: 10 }}>
-          {['🌡️ Froid', '🔥 Chaud', '❄️ Refroid.', '🎓 Formation'].map((t, i) => (
-            <button
-              key={i}
-              onClick={() => setTab(i)}
-              style={{ flex: 1, padding: '10px 4px 12px', border: 'none', background: 'none', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: F, color: tab === i ? '#2563EB' : '#94A3B8', borderBottom: tab === i ? '2.5px solid #2563EB' : '2.5px solid transparent', transition: 'all .15s' }}
-            >
-              {t}
-            </button>
-          ))}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {view === 'home' ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 16, fontWeight: 800, color: '#0F172A' }}>HACCP</span>
+              {conformite && (
+                <button
+                  onClick={() => setConformiteModal(true)}
+                  style={{ background: 'none', border: `1px solid ${scoreColor}44`, borderRadius: 20, padding: '2px 10px', fontSize: 12, fontWeight: 600, cursor: 'pointer', color: scoreColor, fontFamily: F }}
+                >
+                  {conformite.score}% conforme {scoreEmoji}
+                </button>
+              )}
+            </div>
+          ) : (
+            <span style={{ fontSize: 15, fontWeight: 700, color: '#0F172A' }}>
+              {view === 'releves'   ? '🌡️ Relevés de température' :
+               view === 'froid'    ? '🌡️ Froid' :
+               view === 'chaud'    ? '🔴 Chaud' :
+               view === 'refroid'  ? '❄️ Refroidissement' :
+               view === 'formation' ? '🎓 Formation HACCP' : 'HACCP'}
+            </span>
+          )}
         </div>
+      </div>
 
-        {/* ══════════════ ONGLET FROID ══════════════ */}
-        {tab === 0 && (
+      <div style={{ fontFamily: F, maxWidth: 640, margin: '0 auto', paddingBottom: 80 }}>
+
+        {/* ══════════════ HOME VIEW ══════════════ */}
+        {view === 'home' && (
+          <div style={{ padding: '16px 16px 0' }}>
+
+            {/* Card 1 — Relevés de température */}
+            <button
+              onClick={() => relevesActive ? setView('releves') : goToModules()}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 14,
+                width: '100%', padding: '20px', borderRadius: 20,
+                border: `1.5px solid ${relevesActive ? '#BFDBFE' : '#E2E8F0'}`,
+                background: relevesActive ? '#fff' : '#F8FAFC',
+                cursor: 'pointer', fontFamily: F, textAlign: 'left',
+                marginBottom: 12, opacity: relevesActive ? 1 : 0.72,
+                boxShadow: relevesActive ? '0 2px 12px rgba(37,99,235,.08)' : 'none',
+              }}
+            >
+              <div style={{ width: 54, height: 54, borderRadius: 16, background: relevesActive ? '#EFF6FF' : '#F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28, flexShrink: 0 }}>
+                {relevesActive ? '🌡️' : '🔒'}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 15, fontWeight: 700, color: '#0F172A', marginBottom: 3 }}>Relevés de température</div>
+                {relevesActive ? (
+                  <div style={{ fontSize: 12.5, color: '#64748B' }}>Froid · Chaud · Refroidissement</div>
+                ) : (
+                  <div style={{ fontSize: 12.5, color: '#94A3B8' }}>Désactivé — Activer ?</div>
+                )}
+              </div>
+              {relevesActive && todayTemps.length > 0 && (
+                <div style={{ background: '#DBEAFE', color: '#1D4ED8', fontSize: 12, fontWeight: 700, padding: '3px 10px', borderRadius: 99, flexShrink: 0 }}>
+                  {todayTemps.length} auj.
+                </div>
+              )}
+              <span style={{ color: '#CBD5E1', fontSize: 20, flexShrink: 0 }}>›</span>
+            </button>
+
+            {/* Card 2 — Formation HACCP */}
+            <button
+              onClick={() => formationActive ? setView('formation') : goToModules()}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 14,
+                width: '100%', padding: '20px', borderRadius: 20,
+                border: `1.5px solid ${formationActive ? '#A5B4FC' : '#E2E8F0'}`,
+                background: formationActive ? '#fff' : '#F8FAFC',
+                cursor: 'pointer', fontFamily: F, textAlign: 'left',
+                marginBottom: 12, opacity: formationActive ? 1 : 0.72,
+                boxShadow: formationActive ? '0 2px 12px rgba(99,102,241,.08)' : 'none',
+              }}
+            >
+              <div style={{ width: 54, height: 54, borderRadius: 16, background: formationActive ? '#EEF2FF' : '#F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28, flexShrink: 0 }}>
+                {formationActive ? '🎓' : '🔒'}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 15, fontWeight: 700, color: '#0F172A', marginBottom: 3 }}>Formation HACCP</div>
+                {formationActive ? (
+                  <div style={{ fontSize: 12.5, color: '#64748B' }}>
+                    {formesCount}/{FORM_MODULES.length} modules validés · {equipeCount + 1} membres
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 12.5, color: '#94A3B8' }}>Désactivé — Activer ?</div>
+                )}
+              </div>
+              {formationActive && enCours > 0 && (
+                <div style={{ background: '#FEF3C7', color: '#92400E', fontSize: 12, fontWeight: 700, padding: '3px 10px', borderRadius: 99, flexShrink: 0 }}>
+                  {enCours} en cours
+                </div>
+              )}
+              <span style={{ color: '#CBD5E1', fontSize: 20, flexShrink: 0 }}>›</span>
+            </button>
+          </div>
+        )}
+
+        {/* ══════════════ RELEVÉS VIEW ══════════════ */}
+        {view === 'releves' && (
+          <div style={{ padding: '16px 16px 0', display: 'flex', flexDirection: 'column', gap: 12 }}>
+
+            {/* Froid sub-card */}
+            {(() => {
+              const active = isActive('haccp_froid')
+              return (
+                <button
+                  onClick={() => active ? setView('froid') : goToModules()}
+                  style={{ display: 'flex', alignItems: 'center', gap: 14, width: '100%', padding: '18px', borderRadius: 18, border: `1.5px solid ${active ? '#BFDBFE' : '#E2E8F0'}`, background: active ? '#fff' : '#F8FAFC', cursor: 'pointer', fontFamily: F, textAlign: 'left', opacity: active ? 1 : 0.65, boxShadow: active ? '0 2px 8px rgba(37,99,235,.06)' : 'none' }}
+                >
+                  <div style={{ width: 48, height: 48, borderRadius: 14, background: active ? '#EFF6FF' : '#F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, flexShrink: 0 }}>
+                    {active ? '🌡️' : '🔒'}
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: '#0F172A', marginBottom: 2 }}>Relevés Froid</div>
+                    <div style={{ fontSize: 12, color: '#64748B' }}>{zones.filter(z => (z.type || 'froid') !== 'chaud').length} zone(s) configurée(s)</div>
+                  </div>
+                  {active && froidToday.length > 0 && (
+                    <div style={{ background: '#DBEAFE', color: '#1D4ED8', fontSize: 12, fontWeight: 700, padding: '2px 9px', borderRadius: 99, flexShrink: 0 }}>{froidToday.length}</div>
+                  )}
+                  {!active && <span style={{ fontSize: 11.5, color: '#94A3B8', fontWeight: 500 }}>Désactivé</span>}
+                  {active && <span style={{ color: '#CBD5E1', fontSize: 18, flexShrink: 0 }}>›</span>}
+                </button>
+              )
+            })()}
+
+            {/* Chaud sub-card */}
+            {(() => {
+              const active = isActive('haccp_chaud')
+              return (
+                <button
+                  onClick={() => active ? setView('chaud') : goToModules()}
+                  style={{ display: 'flex', alignItems: 'center', gap: 14, width: '100%', padding: '18px', borderRadius: 18, border: `1.5px solid ${active ? '#FED7AA' : '#E2E8F0'}`, background: active ? '#fff' : '#F8FAFC', cursor: 'pointer', fontFamily: F, textAlign: 'left', opacity: active ? 1 : 0.65, boxShadow: active ? '0 2px 8px rgba(249,115,22,.06)' : 'none' }}
+                >
+                  <div style={{ width: 48, height: 48, borderRadius: 14, background: active ? '#FFF7ED' : '#F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, flexShrink: 0 }}>
+                    {active ? '🔴' : '🔒'}
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: '#0F172A', marginBottom: 2 }}>Relevés Chaud</div>
+                    <div style={{ fontSize: 12, color: '#64748B' }}>{chaudToday.length}/{nb} prises aujourd'hui</div>
+                  </div>
+                  {active && chaudToday.length > 0 && (
+                    <div style={{ background: '#FED7AA', color: '#92400E', fontSize: 12, fontWeight: 700, padding: '2px 9px', borderRadius: 99, flexShrink: 0 }}>{chaudToday.length}</div>
+                  )}
+                  {!active && <span style={{ fontSize: 11.5, color: '#94A3B8', fontWeight: 500 }}>Désactivé</span>}
+                  {active && <span style={{ color: '#CBD5E1', fontSize: 18, flexShrink: 0 }}>›</span>}
+                </button>
+              )
+            })()}
+
+            {/* Refroidissement sub-card */}
+            {(() => {
+              const active = isActive('haccp_refroidissement')
+              return (
+                <button
+                  onClick={() => active ? setView('refroid') : goToModules()}
+                  style={{ display: 'flex', alignItems: 'center', gap: 14, width: '100%', padding: '18px', borderRadius: 18, border: `1.5px solid ${active ? '#BAE6FD' : '#E2E8F0'}`, background: active ? '#fff' : '#F8FAFC', cursor: 'pointer', fontFamily: F, textAlign: 'left', opacity: active ? 1 : 0.65, boxShadow: active ? '0 2px 8px rgba(14,165,233,.06)' : 'none' }}
+                >
+                  <div style={{ width: 48, height: 48, borderRadius: 14, background: active ? '#F0F9FF' : '#F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, flexShrink: 0 }}>
+                    {active ? '❄️' : '🔒'}
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: '#0F172A', marginBottom: 2 }}>Refroidissement</div>
+                    <div style={{ fontSize: 12, color: '#64748B' }}>{plats.length} plat(s) en cours · {refroidToday.length} mesures</div>
+                  </div>
+                  {active && plats.length > 0 && (
+                    <div style={{ background: '#BAE6FD', color: '#0C4A6E', fontSize: 12, fontWeight: 700, padding: '2px 9px', borderRadius: 99, flexShrink: 0 }}>{plats.length}</div>
+                  )}
+                  {!active && <span style={{ fontSize: 11.5, color: '#94A3B8', fontWeight: 500 }}>Désactivé</span>}
+                  {active && <span style={{ color: '#CBD5E1', fontSize: 18, flexShrink: 0 }}>›</span>}
+                </button>
+              )
+            })()}
+          </div>
+        )}
+
+        {/* ══════════════ FROID VIEW ══════════════ */}
+        {view === 'froid' && (
           <div style={{ padding: '16px 16px 0' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
               <div style={S.sectionTitle}>Zones froides</div>
@@ -538,10 +791,10 @@ export default function Haccp({ user, profile, fromDashboard, onBack }) {
                   {zoneAps.length === 0 ? (
                     <div style={{ ...S.empty, padding: '12px 0', fontSize: 12 }}>Aucun appareil dans cette zone.</div>
                   ) : zoneAps.map(ap => {
-                    const apTemps   = todayTemps.filter(t => t.appareil_id === ap.id)
-                    const last      = apTemps[0]
-                    const isExp     = !!expanded[ap.id]
-                    const hasSeuil  = ap.temp_min !== null && ap.temp_max !== null
+                    const apTemps  = todayTemps.filter(t => t.appareil_id === ap.id)
+                    const last     = apTemps[0]
+                    const isExp    = !!expanded[ap.id]
+                    const hasSeuil = ap.temp_min !== null && ap.temp_max !== null
                     return (
                       <div key={ap.id} style={{ ...S.card, marginBottom: 8 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -585,8 +838,8 @@ export default function Haccp({ user, profile, fromDashboard, onBack }) {
           </div>
         )}
 
-        {/* ══════════════ ONGLET CHAUD ══════════════ */}
-        {tab === 1 && (
+        {/* ══════════════ CHAUD VIEW ══════════════ */}
+        {view === 'chaud' && (
           <div style={{ padding: '16px 16px 0' }}>
             <div style={{ ...S.card, marginBottom: 16, background: 'linear-gradient(135deg,#FFF7ED,#FFFBEB)', borderColor: '#FED7AA' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -616,16 +869,10 @@ export default function Haccp({ user, profile, fromDashboard, onBack }) {
                         {done ? (done.plat_nom || 'Plat non renseigné') : `Prise ${i + 1}`}
                       </div>
                       {done && (
-                        <div style={{ fontSize: 12, color: '#94A3B8' }}>
-                          {done.valeur.toFixed(1)}°C · {fmtTime(done.created_at)}
-                        </div>
+                        <div style={{ fontSize: 12, color: '#94A3B8' }}>{done.valeur.toFixed(1)}°C · {fmtTime(done.created_at)}</div>
                       )}
                     </div>
-                    {!done && (
-                      <button onClick={() => setChaudModal(true)} style={S.btnP}>
-                        Prendre
-                      </button>
-                    )}
+                    {!done && <button onClick={() => setChaudModal(true)} style={S.btnP}>Prendre</button>}
                     {done && (
                       <div style={{ padding: '4px 10px', borderRadius: 99, fontSize: 13, fontWeight: 700, border: '1.5px solid', flexShrink: 0, background: done.conforme ? '#F0FDF4' : '#FEF2F2', color: done.conforme ? '#16A34A' : '#DC2626', borderColor: done.conforme ? '#BBF7D0' : '#FECACA' }}>
                         {done.valeur.toFixed(1)}°
@@ -642,8 +889,8 @@ export default function Haccp({ user, profile, fromDashboard, onBack }) {
           </div>
         )}
 
-        {/* ══════════════ ONGLET REFROIDISSEMENT ══════════════ */}
-        {tab === 2 && (
+        {/* ══════════════ REFROIDISSEMENT VIEW ══════════════ */}
+        {view === 'refroid' && (
           <div style={{ padding: '16px 16px 0' }}>
             <button onClick={() => setPlatModal(true)} style={{ ...S.btnP, width: '100%', marginBottom: 20 }}>
               ❄️ Mettre un plat en cellule
@@ -667,8 +914,8 @@ export default function Haccp({ user, profile, fromDashboard, onBack }) {
                       </div>
                       <div style={{ display: 'flex', gap: 6 }}>
                         {ETAPES.map(etape => {
-                          const due  = Date.now() >= debut.getTime() + etape.ms
-                          const done = platTmps.find(t => t.refroidissement_etape === etape.key)
+                          const due    = Date.now() >= debut.getTime() + etape.ms
+                          const done   = platTmps.find(t => t.refroidissement_etape === etape.key)
                           const active = due && !done
                           return (
                             <div key={etape.key} style={{ flex: 1, textAlign: 'center' }}>
@@ -719,11 +966,10 @@ export default function Haccp({ user, profile, fromDashboard, onBack }) {
           </div>
         )}
 
-        {/* ══════════════ ONGLET FORMATION ══════════════ */}
-        {tab === 3 && (() => {
+        {/* ══════════════ FORMATION VIEW ══════════════ */}
+        {view === 'formation' && (() => {
           const allValidated = FORM_MODULES.every(m => formProgs.find(p => p.module_id === m.id && p.statut === 'valide'))
 
-          // ── Vue Liste ──
           if (formView === 'list' || !formModule) return (
             <div style={{ padding: '16px 16px 0' }}>
               <div style={{ ...S.card, background: 'linear-gradient(135deg,#EEF2FF,#E0E7FF)', borderColor: '#A5B4FC', marginBottom: 16 }}>
@@ -750,7 +996,7 @@ export default function Haccp({ user, profile, fromDashboard, onBack }) {
                       key={mod.id}
                       onClick={() => !locked && openFormModule(mod)}
                       disabled={locked}
-                      style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px', borderRadius: 16, border: `1.5px solid ${validated ? mod.color + '66' : locked ? '#E2E8F0' : '#E2E8F0'}`, background: validated ? mod.bg : locked ? '#F8FAFC' : '#fff', cursor: locked ? 'default' : 'pointer', fontFamily: F, textAlign: 'left', opacity: locked ? .55 : 1 }}
+                      style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px', borderRadius: 16, border: `1.5px solid ${validated ? mod.color + '66' : '#E2E8F0'}`, background: validated ? mod.bg : locked ? '#F8FAFC' : '#fff', cursor: locked ? 'default' : 'pointer', fontFamily: F, textAlign: 'left', opacity: locked ? .55 : 1 }}
                     >
                       <div style={{ width: 46, height: 46, borderRadius: 14, background: validated ? mod.bg : '#F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, flexShrink: 0, border: validated ? `1.5px solid ${mod.color}44` : '1.5px solid #E2E8F0' }}>
                         {locked ? '🔒' : mod.icon}
@@ -774,10 +1020,8 @@ export default function Haccp({ user, profile, fromDashboard, onBack }) {
             </div>
           )
 
-          // ── Vue Chat ──
           if (formView === 'chat') return (
             <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 200px)', minHeight: 400 }}>
-              {/* Header */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 16px', borderBottom: '1px solid #E2E8F0', flexShrink: 0 }}>
                 <button onClick={() => { setFormView('list'); setFormModule(null) }} style={{ ...S.btnGhost, padding: '6px 10px' }}>←</button>
                 <div style={{ width: 36, height: 36, borderRadius: 10, background: formModule.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, flexShrink: 0 }}>{formModule.icon}</div>
@@ -786,13 +1030,10 @@ export default function Haccp({ user, profile, fromDashboard, onBack }) {
                   <div style={{ fontSize: 11, color: '#94A3B8' }}>Formation avec Aria</div>
                 </div>
                 {formQuizReady && (
-                  <button onClick={loadQuiz} style={{ ...S.btnP, padding: '8px 12px', fontSize: 12, flexShrink: 0 }}>
-                    ✏️ Quiz
-                  </button>
+                  <button onClick={loadQuiz} style={{ ...S.btnP, padding: '8px 12px', fontSize: 12, flexShrink: 0 }}>✏️ Quiz</button>
                 )}
               </div>
 
-              {/* Messages */}
               <div style={{ flex: 1, overflowY: 'auto', padding: '16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
                 {formChat.length === 0 && (
                   <div style={{ textAlign: 'center', padding: '32px 20px', color: '#94A3B8', fontSize: 13 }}>
@@ -838,7 +1079,6 @@ export default function Haccp({ user, profile, fromDashboard, onBack }) {
                 <div ref={formBottomRef} />
               </div>
 
-              {/* Input */}
               <div style={{ padding: '12px 16px', borderTop: '1px solid #E2E8F0', display: 'flex', gap: 8, flexShrink: 0 }}>
                 <input
                   style={{ ...S.input, flex: 1, borderRadius: 20, padding: '9px 16px', fontSize: 13 }}
@@ -858,7 +1098,6 @@ export default function Haccp({ user, profile, fromDashboard, onBack }) {
             </div>
           )
 
-          // ── Vue Quiz ──
           if (formView === 'quiz') return (
             <div style={{ padding: '16px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
@@ -884,19 +1123,15 @@ export default function Haccp({ user, profile, fromDashboard, onBack }) {
               ) : (() => {
                 const q = formQuiz[formQuizIdx]
                 const answered = formQuizAnswers[formQuizIdx] !== undefined
-                const isLast = formQuizIdx === formQuiz.length - 1
-                const allDone = formQuiz.every((_, i) => formQuizAnswers[i] !== undefined)
+                const isLast   = formQuizIdx === formQuiz.length - 1
+                const allDone  = formQuiz.every((_, i) => formQuizAnswers[i] !== undefined)
                 return (
                   <div>
-                    {/* Progress */}
                     <div style={{ height: 4, background: '#E2E8F0', borderRadius: 99, marginBottom: 20, overflow: 'hidden' }}>
                       <div style={{ height: '100%', width: `${((formQuizIdx + 1) / formQuiz.length) * 100}%`, background: formModule.color, borderRadius: 99, transition: 'width .3s' }} />
                     </div>
-
                     <div style={S.card}>
-                      <div style={{ fontSize: 14, fontWeight: 700, color: '#0F172A', marginBottom: 16, lineHeight: 1.5 }}>
-                        {q.question}
-                      </div>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: '#0F172A', marginBottom: 16, lineHeight: 1.5 }}>{q.question}</div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                         {q.options.map((opt, oi) => {
                           const sel = formQuizAnswers[formQuizIdx] === oi
@@ -915,25 +1150,14 @@ export default function Haccp({ user, profile, fromDashboard, onBack }) {
                         })}
                       </div>
                     </div>
-
                     <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
                       {formQuizIdx > 0 && (
                         <button onClick={() => setFormQuizIdx(i => i - 1)} style={S.btnGhost}>← Précédent</button>
                       )}
                       {!isLast ? (
-                        <button
-                          onClick={() => setFormQuizIdx(i => i + 1)}
-                          disabled={!answered}
-                          style={{ ...S.btnP, flex: 1, opacity: !answered ? .5 : 1 }}
-                        >
-                          Suivant →
-                        </button>
+                        <button onClick={() => setFormQuizIdx(i => i + 1)} disabled={!answered} style={{ ...S.btnP, flex: 1, opacity: !answered ? .5 : 1 }}>Suivant →</button>
                       ) : (
-                        <button
-                          onClick={submitQuiz}
-                          disabled={!allDone || formSaving}
-                          style={{ ...S.btnP, flex: 1, opacity: !allDone ? .5 : 1, background: `linear-gradient(135deg,${formModule.color},${formModule.color}CC)` }}
-                        >
+                        <button onClick={submitQuiz} disabled={!allDone || formSaving} style={{ ...S.btnP, flex: 1, opacity: !allDone ? .5 : 1, background: `linear-gradient(135deg,${formModule.color},${formModule.color}CC)` }}>
                           {formSaving ? 'Enregistrement…' : 'Valider le quiz'}
                         </button>
                       )}
@@ -944,7 +1168,6 @@ export default function Haccp({ user, profile, fromDashboard, onBack }) {
             </div>
           )
 
-          // ── Vue Résultat ──
           if (formView === 'result' && formResult) return (
             <div style={{ padding: '16px' }}>
               <div style={{ ...S.card, textAlign: 'center', marginBottom: 16, border: formResult.passed ? '1.5px solid #A7F3D0' : '1.5px solid #FECACA', background: formResult.passed ? 'linear-gradient(135deg,#F0FDF4,#ECFDF5)' : 'linear-gradient(135deg,#FEF2F2,#FFF5F5)' }}>
@@ -961,12 +1184,11 @@ export default function Haccp({ user, profile, fromDashboard, onBack }) {
                 </div>
               </div>
 
-              {/* Correction */}
               <div style={{ ...S.card, marginBottom: 16 }}>
                 <div style={S.sectionTitle}>Correction</div>
                 {formQuiz.map((q, qi) => {
-                  const userAns  = formQuizAnswers[qi]
-                  const isOk     = userAns === q.correct
+                  const userAns = formQuizAnswers[qi]
+                  const isOk   = userAns === q.correct
                   return (
                     <div key={qi} style={{ padding: '10px 12px', background: isOk ? '#F0FDF4' : '#FEF2F2', borderRadius: 10, border: `1px solid ${isOk ? '#A7F3D0' : '#FECACA'}`, marginBottom: 8 }}>
                       <div style={{ fontSize: 12.5, fontWeight: 700, color: '#0F172A', marginBottom: 4 }}>{qi + 1}. {q.question}</div>
@@ -998,6 +1220,7 @@ export default function Haccp({ user, profile, fromDashboard, onBack }) {
 
           return null
         })()}
+
       </div>
 
       {/* ══════════════ MODALS ══════════════ */}
@@ -1042,7 +1265,6 @@ export default function Haccp({ user, profile, fromDashboard, onBack }) {
         />
       )}
 
-      {/* Plat en cellule */}
       {platModal && (
         <div style={S.overlay} onClick={() => setPlatModal(false)}>
           <div style={S.sheet} onClick={e => e.stopPropagation()}>
@@ -1059,7 +1281,6 @@ export default function Haccp({ user, profile, fromDashboard, onBack }) {
         </div>
       )}
 
-      {/* Paramètres service chaud */}
       {settingsModal && (
         <div style={S.overlay} onClick={() => setSettingsModal(false)}>
           <div style={S.sheet} onClick={e => e.stopPropagation()}>
@@ -1080,7 +1301,6 @@ export default function Haccp({ user, profile, fromDashboard, onBack }) {
         </div>
       )}
 
-      {/* Gérer les zones */}
       {zonesModal && (
         <div style={{ ...S.overlay, alignItems: 'flex-start', overflowY: 'auto' }} onClick={() => setZonesModal(false)}>
           <div style={{ background: '#fff', borderRadius: 20, margin: '60px 16px 20px', padding: '24px 20px', fontFamily: F, maxHeight: 'calc(100vh - 80px)', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
@@ -1124,7 +1344,7 @@ export default function Haccp({ user, profile, fromDashboard, onBack }) {
                 <input type="number" value={newApMax} onChange={e => setNewApMax(e.target.value)} style={S.input} placeholder="T° max (°C)" />
               </div>
               <button onClick={addAppareil} disabled={!newApNom.trim() || !newApZone || savingZone} style={{ ...S.btnP, width: '100%', opacity: (!newApNom.trim() || !newApZone) ? .5 : 1 }}>
-                {savingZone ? '…' : 'Ajouter l\'appareil'}
+                {savingZone ? '…' : "Ajouter l'appareil"}
               </button>
             </div>
 

@@ -159,6 +159,9 @@ export default function Parametres({ user, profile: initProfile, setProfile, onL
   const [marge,       setMarge]       = useState('')
   const [devise,      setDevise]      = useState('€')
 
+  // Modules
+  const [modules,     setModules]     = useState({})
+
   const showToast = (msg, type = 'success') => {
     setToast({ msg, type })
     setTimeout(() => setToast(null), 3000)
@@ -196,6 +199,7 @@ export default function Parametres({ user, profile: initProfile, setProfile, onL
           setTicket(s.ticket_moyen !== undefined ? String(s.ticket_moyen) : '')
           setMarge(s.objectif_marge !== undefined ? String(s.objectif_marge) : '')
           setDevise(s.devise || '€')
+          setModules(s.modules || {})
         }
 
         if (zoneRes.data) setZones(zoneRes.data.map(z => ({ ...z, _uid: z.id })))
@@ -375,6 +379,26 @@ export default function Parametres({ user, profile: initProfile, setProfile, onL
       showToast('Erreur lors de la suppression', 'error')
       setDeleting(false)
     }
+  }
+
+  // ── Modules ────────────────────────────────────────────────────────────────
+  const toggleModule = (key) => {
+    setModules(prev => {
+      const current = prev[key] !== false
+      return { ...prev, [key]: !current }
+    })
+  }
+
+  const saveModules = async () => {
+    startSave('modules')
+    try {
+      const settings = { ...(etab.settings || {}), modules }
+      const { error } = await supabase.from('etablissements').update({ settings }).eq('owner_id', user.id)
+      if (error) throw error
+      setEtab(p => ({ ...p, settings }))
+      showToast('Modules mis à jour')
+    } catch { showToast('Erreur lors de la sauvegarde', 'error') }
+    endSave('modules')
   }
 
   // ── Business ───────────────────────────────────────────────────────────────
@@ -566,7 +590,58 @@ export default function Parametres({ user, profile: initProfile, setProfile, onL
         </button>
       </div>
 
-      {/* ── 6. Plan tarifaire ──────────────────────────────────────────────── */}
+      {/* ── 6. Modules & Conformité ────────────────────────────────────────── */}
+      {(initProfile?.role === 'proprietaire' || initProfile?.role === 'chef') && (
+        <div style={S.card}>
+          <div style={S.title}>🧩 Modules & Conformité</div>
+          <div style={{ fontSize:12.5, color:'#64748B', marginBottom:14, lineHeight:1.5 }}>
+            Activez ou désactivez les modules selon votre établissement. Les modules désactivés sont masqués pour les employés.
+          </div>
+          {[
+            { key:'haccp_froid',          label:'Relevés Froid',       emoji:'🌡️' },
+            { key:'haccp_chaud',          label:'Relevés Chaud',       emoji:'🔥' },
+            { key:'haccp_refroidissement',label:'Refroidissement',     emoji:'❄️' },
+            { key:'haccp_alertes_sonores',label:'Alertes sonores',     emoji:'🔔' },
+            { key:'haccp_formation',      label:'Formation HACCP',     emoji:'🎓' },
+            { key:'stocks',               label:'Stocks & DLC',        emoji:'📦' },
+            { key:'receptions',           label:'Réceptions',          emoji:'📬' },
+            { key:'mise_en_place',        label:'Mise en place',       emoji:'🍽️' },
+            { key:'etiquettes',           label:'Étiquettes',          emoji:'🏷️' },
+            { key:'equipe',               label:'Équipe',              emoji:'👥' },
+            { key:'business',             label:'Business',            emoji:'📊' },
+          ].map(({ key, label, emoji }) => {
+            const active = modules[key] !== false
+            return (
+              <div key={key} style={{ display:'flex', alignItems:'center', gap:12, padding:'10px 0', borderBottom:'1px solid #F1F5F9' }}>
+                <span style={{ fontSize:18, width:24, textAlign:'center', flexShrink:0 }}>{emoji}</span>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontSize:13.5, fontWeight:600, color: active ? '#0F172A' : '#94A3B8' }}>{label}</div>
+                </div>
+                <button
+                  onClick={() => toggleModule(key)}
+                  style={{
+                    width:44, height:24, borderRadius:12, border:'none', cursor:'pointer',
+                    background: active ? '#2563EB' : '#E2E8F0',
+                    position:'relative', flexShrink:0, transition:'background .2s',
+                    padding:0,
+                  }}
+                >
+                  <div style={{
+                    position:'absolute', top:2, left: active ? 22 : 2,
+                    width:20, height:20, borderRadius:'50%', background:'#fff',
+                    boxShadow:'0 1px 3px rgba(0,0,0,.2)', transition:'left .2s',
+                  }} />
+                </button>
+              </div>
+            )
+          })}
+          <button onClick={saveModules} disabled={isSaving('modules')} style={{ ...S.btnPrimary, marginTop:16, opacity: isSaving('modules') ? .6 : 1 }}>
+            {isSaving('modules') ? 'Enregistrement…' : 'Enregistrer les modules'}
+          </button>
+        </div>
+      )}
+
+      {/* ── 7. Plan tarifaire ──────────────────────────────────────────────── */}
       <div style={S.card}>
         <div style={S.title}>💎 Plan tarifaire</div>
         <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:14 }}>
