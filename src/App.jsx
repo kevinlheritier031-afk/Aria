@@ -179,15 +179,22 @@ function BottomNav({ page, setPage, alertDlc, alertCmd }) {
   return (
     <nav className="bnav">
       {BOTTOM_NAV_ITEMS.map(item => {
-        const badge = item.k === 'stock' ? alertDlc : item.k === 'commandes' ? alertCmd : 0
+        const badge  = item.k === 'stock' ? alertDlc : item.k === 'commandes' ? alertCmd : 0
+        const isAria = item.k === 'aria'
         return (
           <button
             key={item.k}
             className={`bnav-item${page === item.k ? ' active' : ''}`}
             onClick={() => setPage(item.k)}
           >
-            <span className="bnav-icon-pill">
-              <span className="bnav-icon">{item.emoji}</span>
+            <span
+              className="bnav-icon-pill"
+              style={isAria ? { width: 32, height: 32, borderRadius: '50%', background: '#2563EB' } : undefined}
+            >
+              <span
+                className="bnav-icon"
+                style={isAria ? { color: '#FFFFFF', fontSize: 16 } : undefined}
+              >{isAria ? `${item.emoji}︎` : item.emoji}</span>
             </span>
             {badge > 0 && <span className="badge badge-danger bnav-badge">{badge}</span>}
             <span className="bnav-label">{item.label}</span>
