@@ -167,6 +167,164 @@ function FeedbackModal({ conforme, valeur, seuil, onClose }) {
   )
 }
 
+// ── MOTIFS ────────────────────────────────────────────────────────────────────
+
+const MOTIFS = [
+  { key: 'porte',     label: 'Porte mal fermée' },
+  { key: 'surcharge', label: 'Surcharge produits' },
+  { key: 'panne',     label: 'Panne / défaut appareil' },
+  { key: 'nettoyage', label: 'Nettoyage en cours' },
+  { key: 'livraison', label: 'Livraison récente' },
+  { key: 'autre',     label: 'Autre' },
+]
+
+// ── FroidReleverModal ─────────────────────────────────────────────────────────
+
+function FroidReleverModal({ appareil, zone, onClose, onSubmit, saving }) {
+  const [raw, setRaw] = useState('')
+  const [neg, setNeg] = useState(false)
+
+  const parsedRaw = raw !== '' ? parseFloat(raw) : null
+  const numVal    = parsedRaw !== null && !isNaN(parsedRaw) ? (neg ? -parsedRaw : parsedRaw) : null
+  const display   = numVal !== null ? numVal.toFixed(1) : '—'
+
+  const step = (dir) => {
+    const base    = numVal !== null ? numVal : 0
+    const next    = Math.round((base + dir * 0.5) * 10) / 10
+    const clamped = Math.max(-30, Math.min(15, next))
+    setNeg(clamped < 0)
+    setRaw(String(Math.abs(clamped)))
+  }
+
+  return (
+    <div style={S.overlay} onClick={onClose}>
+      <div style={{ ...S.sheet, padding: '24px 20px 40px' }} onClick={e => e.stopPropagation()}>
+        <div style={S.handle} />
+        <div style={{ fontSize: 16, fontWeight: 700, color: '#0F172A', marginBottom: 2 }}>{appareil.nom}</div>
+        <div style={{ fontSize: 12, color: '#94A3B8', marginBottom: 20 }}>Zone : {zone.nom}</div>
+
+        <div style={{ textAlign: 'center', marginBottom: 6 }}>
+          <span style={{ fontSize: 72, fontWeight: 800, color: '#0F172A', letterSpacing: -3, lineHeight: 1 }}>{display}</span>
+          <span style={{ fontSize: 32, fontWeight: 600, color: '#94A3B8' }}>°C</span>
+        </div>
+
+        {appareil.temp_min !== null && appareil.temp_max !== null && (
+          <div style={{ textAlign: 'center', fontSize: 11.5, color: '#94A3B8', marginBottom: 18 }}>
+            Plage cible : {appareil.temp_min}°C – {appareil.temp_max}°C
+          </div>
+        )}
+
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 14 }}>
+          <button onClick={() => step(-1)} style={{ width: 52, height: 52, borderRadius: 14, border: '1.5px solid #BFDBFE', background: '#EFF6FF', cursor: 'pointer', fontSize: 26, fontWeight: 700, color: '#2563EB', flexShrink: 0 }}>−</button>
+          <input
+            type="number"
+            inputMode="decimal"
+            value={raw}
+            onChange={e => { const v = e.target.value; if (v === '' || /^\d*\.?\d*$/.test(v)) setRaw(v) }}
+            placeholder="0.0"
+            style={{ flex: 1, fontSize: 22, fontWeight: 700, border: 'none', borderBottom: '2px solid #2563EB', textAlign: 'center', outline: 'none', background: 'transparent', color: '#0F172A', fontFamily: F, padding: '4px 0' }}
+          />
+          <button onClick={() => step(1)} style={{ width: 52, height: 52, borderRadius: 14, border: '1.5px solid #BFDBFE', background: '#EFF6FF', cursor: 'pointer', fontSize: 26, fontWeight: 700, color: '#2563EB', flexShrink: 0 }}>+</button>
+        </div>
+
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button onClick={() => setNeg(n => !n)} style={{ ...S.btnGhost, background: neg ? '#EFF6FF' : '#F8FAFC', borderColor: neg ? '#2563EB' : '#E2E8F0', color: neg ? '#2563EB' : '#94A3B8', fontWeight: 700, flexShrink: 0 }}>+/−</button>
+          <button
+            onClick={() => numVal !== null && !saving && onSubmit(numVal)}
+            disabled={numVal === null || saving}
+            style={{ ...S.btnP, flex: 1, opacity: (numVal === null || saving) ? .5 : 1 }}
+          >{saving ? 'Enregistrement…' : 'Valider'}</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── MiniChart ─────────────────────────────────────────────────────────────────
+
+function MiniChart({ data, tempMin, tempMax }) {
+  if (!data || data.length < 2) return null
+  const rev  = [...data].reverse()
+  const vals = rev.map(t => t.valeur)
+  const allV = [...vals, tempMin ?? vals[0], tempMax ?? vals[0]]
+  const minV = Math.min(...allV) - 1
+  const maxV = Math.max(...allV) + 1
+  const W = 260, H = 72, P = 8
+
+  const toX = (i) => P + (i / (rev.length - 1)) * (W - P * 2)
+  const toY = (v) => H - P - ((v - minV) / (maxV - minV || 1)) * (H - P * 2)
+  const pts  = rev.map((t, i) => `${toX(i).toFixed(1)},${toY(t.valeur).toFixed(1)}`).join(' ')
+
+  return (
+    <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ display: 'block', marginBottom: 6 }}>
+      {tempMax !== null && tempMax !== undefined && (
+        <line x1={P} y1={toY(tempMax).toFixed(1)} x2={W - P} y2={toY(tempMax).toFixed(1)} stroke="#FECACA" strokeWidth="1.5" strokeDasharray="4,3" />
+      )}
+      {tempMin !== null && tempMin !== undefined && (
+        <line x1={P} y1={toY(tempMin).toFixed(1)} x2={W - P} y2={toY(tempMin).toFixed(1)} stroke="#BFDBFE" strokeWidth="1.5" strokeDasharray="4,3" />
+      )}
+      <polyline points={pts} fill="none" stroke="#2563EB" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+      {rev.map((t, i) => (
+        <circle key={i} cx={toX(i).toFixed(1)} cy={toY(t.valeur).toFixed(1)} r="3.5"
+          fill={t.conforme === false ? '#EF4444' : t.conforme === true ? '#10B981' : '#94A3B8'}
+          stroke="#fff" strokeWidth="1.5"
+        />
+      ))}
+    </svg>
+  )
+}
+
+// ── MotifModal ────────────────────────────────────────────────────────────────
+
+function MotifModal({ data, selectedMotif, motifTexte, correctiveSuggestion, correctiveLoading, onSelectMotif, onChangeTexte, onConfirm, onClose, saving }) {
+  const { appareil, valeur, conforme } = data
+  const isHorsNorme  = conforme === false
+  const statusColor  = isHorsNorme ? '#DC2626' : '#F59E0B'
+  const statusLabel  = isHorsNorme ? '🔴 Hors norme — Action requise' : "🟠 Zone d'alerte — Surveiller"
+
+  return (
+    <div style={{ ...S.overlay, alignItems: 'flex-end' }} onClick={onClose}>
+      <div style={{ background: '#fff', borderRadius: '24px 24px 0 0', padding: '24px 20px 40px', fontFamily: F, maxHeight: '92vh', overflowY: 'auto', width: '100%', boxSizing: 'border-box' }} onClick={e => e.stopPropagation()}>
+        <div style={S.handle} />
+        <div style={{ textAlign: 'center', marginBottom: 18 }}>
+          <div style={{ fontSize: 48, fontWeight: 800, color: statusColor, lineHeight: 1, marginBottom: 4 }}>{valeur.toFixed(1)}°C</div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: statusColor }}>{statusLabel}</div>
+          <div style={{ fontSize: 12, color: '#94A3B8', marginTop: 2 }}>{appareil.nom}</div>
+        </div>
+
+        <div style={{ fontSize: 14, fontWeight: 700, color: '#0F172A', marginBottom: 12 }}>Motif de l'écart</div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
+          {MOTIFS.map(m => (
+            <button key={m.key} onClick={() => onSelectMotif(m.key)} style={{ padding: '8px 14px', borderRadius: 99, border: '1.5px solid', fontSize: 13, fontWeight: selectedMotif === m.key ? 700 : 400, cursor: 'pointer', fontFamily: F, background: selectedMotif === m.key ? '#FEF2F2' : '#F8FAFC', borderColor: selectedMotif === m.key ? '#EF4444' : '#E2E8F0', color: selectedMotif === m.key ? '#DC2626' : '#475569' }}>
+              {m.label}
+            </button>
+          ))}
+        </div>
+
+        {selectedMotif === 'autre' && (
+          <input value={motifTexte} onChange={e => onChangeTexte(e.target.value)} style={{ ...S.input, marginBottom: 14 }} placeholder="Précisez le motif…" />
+        )}
+
+        {(correctiveLoading || correctiveSuggestion) && (
+          <div style={{ background: '#F0F9FF', border: '1px solid #BAE6FD', borderRadius: 12, padding: '12px 14px', marginBottom: 16 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: '#0369A1', marginBottom: 4 }}>💡 Action corrective suggérée par Aria</div>
+            {correctiveLoading
+              ? <div style={{ fontSize: 13, color: '#94A3B8' }}>Aria réfléchit…</div>
+              : <div style={{ fontSize: 13, color: '#0F172A', lineHeight: 1.65 }}>{correctiveSuggestion}</div>
+            }
+          </div>
+        )}
+
+        <button
+          onClick={() => !correctiveLoading && selectedMotif && onConfirm()}
+          disabled={!selectedMotif || correctiveLoading || saving}
+          style={{ ...S.btnP, width: '100%', background: 'linear-gradient(135deg,#EF4444,#DC2626)', opacity: (!selectedMotif || correctiveLoading || saving) ? .5 : 1 }}
+        >{saving ? 'Enregistrement…' : 'Confirmer et enregistrer'}</button>
+      </div>
+    </div>
+  )
+}
+
 // ── Main ───────────────────────────────────────────────────────────────────────
 
 export default function Haccp({ user, profile, fromDashboard, onBack, setPage }) {
@@ -198,6 +356,18 @@ export default function Haccp({ user, profile, fromDashboard, onBack, setPage })
   const [newApMin,    setNewApMin]    = useState('')
   const [newApMax,    setNewApMax]    = useState('')
   const [savingZone,  setSavingZone]  = useState(false)
+
+  // Froid — navigation étendue
+  const [froidSubView,          setFroidSubView]          = useState('zones') // 'zones'|'zone_detail'
+  const [selectedZone,          setSelectedZone]          = useState(null)
+  const [froidReleverModal,     setFroidReleverModal]     = useState(null)
+  const [froidMotifModal,       setFroidMotifModal]       = useState(null)
+  const [selectedMotif,         setSelectedMotif]         = useState(null)
+  const [motifTexte,            setMotifTexte]            = useState('')
+  const [correctiveLoading,     setCorrectiveLoading]     = useState(false)
+  const [correctiveSuggestion,  setCorrectiveSuggestion]  = useState(null)
+  const [apHistory,             setApHistory]             = useState({})
+  const [historyLoading,        setHistoryLoading]        = useState({})
 
   // Chaud
   const [settings,      setSettings]      = useState({ nb_prises_chaud_par_service: 2 })
@@ -282,27 +452,117 @@ export default function Haccp({ user, profile, fromDashboard, onBack, setPage })
 
   // ── Navigation ──────────────────────────────────────────────────────────────
   const goBack = () => {
-    if (['froid', 'chaud', 'refroid'].includes(view)) { setView('releves'); return }
+    if (view === 'froid' && froidSubView === 'zone_detail') { setFroidSubView('zones'); setSelectedZone(null); return }
+    if (['froid', 'chaud', 'refroid'].includes(view)) { setView('releves'); setFroidSubView('zones'); return }
     if (view === 'releves' || view === 'formation')   { setView('home'); return }
     if (fromDashboard) onBack?.()
   }
 
   // ── Froid ──────────────────────────────────────────────────────────────────
-  const takeFroidTemp = async (valeur) => {
-    if (!tempModal || !eid) return
+
+  const playBeep = (type) => {
+    if (!isActive('haccp_alertes_sonores')) return
+    try {
+      const ctx  = new (window.AudioContext || window.webkitAudioContext)()
+      const beep = (freq, start, dur) => {
+        const osc = ctx.createOscillator(), gain = ctx.createGain()
+        osc.connect(gain); gain.connect(ctx.destination)
+        osc.frequency.value = freq; osc.type = 'sine'
+        gain.gain.setValueAtTime(0.25, ctx.currentTime + start)
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + start + dur)
+        osc.start(ctx.currentTime + start); osc.stop(ctx.currentTime + start + dur + 0.05)
+      }
+      if (type === 'conforme')   { beep(800, 0, 0.1) }
+      else if (type === 'alerte') { beep(400, 0, 0.3); beep(400, 0.38, 0.3) }
+      else                        { beep(600, 0, 0.25); beep(400, 0.32, 0.25); beep(200, 0.64, 0.25) }
+      setTimeout(() => ctx.close(), 2500)
+    } catch {}
+  }
+
+  const handleFroidTempSubmit = (valeur) => {
+    if (!froidReleverModal || !eid) return
+    const { appareil, zone } = froidReleverModal
+    const hasSeuil  = appareil.temp_min !== null && appareil.temp_max !== null
+    const conforme  = hasSeuil ? (valeur >= appareil.temp_min && valeur <= appareil.temp_max) : null
+    const isAlert   = conforme === true && hasSeuil && (valeur > appareil.temp_max - 2 || valeur < appareil.temp_min + 2)
+
+    if (conforme === false || isAlert) {
+      setFroidReleverModal(null)
+      setFroidMotifModal({ appareil, zone, valeur, conforme: conforme === false ? false : 'alert' })
+      setSelectedMotif(null); setMotifTexte(''); setCorrectiveSuggestion(null)
+      playBeep(conforme === false ? 'hors_norme' : 'alerte')
+      return
+    }
+    insertFroidTemp(appareil, zone, valeur, conforme, null, null)
+  }
+
+  const insertFroidTemp = async (appareil, zone, valeur, conforme, motif, actionCorrective) => {
     setSaving(true)
-    const { appareil, zone } = tempModal
-    const conforme = (appareil.temp_min !== null && appareil.temp_max !== null)
-      ? (valeur >= appareil.temp_min && valeur <= appareil.temp_max)
-      : null
     const { data } = await supabase.from('haccp_temperatures').insert({
       etablissement_id: eid, appareil_id: appareil.id, zone_id: zone.id,
-      type: 'froid', valeur, conforme, prise_par: user.id,
+      type: 'froid', valeur, conforme: conforme === 'alert' ? true : conforme,
+      prise_par: user.id,
+      ...(motif           ? { motif }            : {}),
+      ...(actionCorrective ? { action_corrective: actionCorrective } : {}),
     }).select().single()
-    if (data) setTemps(p => [data, ...p])
+    if (data) {
+      setTemps(p => [data, ...p])
+      setApHistory(prev => {
+        const existing = prev[appareil.id]
+        if (!existing) return prev
+        return { ...prev, [appareil.id]: [data, ...existing].slice(0, 10) }
+      })
+    }
     setSaving(false)
-    setTempModal(null)
-    setFeedback({ conforme, valeur, seuil: appareil.temp_max ?? null })
+    setFroidReleverModal(null)
+    setFroidMotifModal(null)
+    playBeep(conforme === false ? 'hors_norme' : conforme === 'alert' ? 'alerte' : 'conforme')
+    setFeedback({ conforme: conforme === false ? false : conforme === 'alert' ? null : true, valeur, seuil: appareil.temp_max ?? null })
+  }
+
+  const getCorrectiveSuggestion = async (appareil, motifLabel, valeur) => {
+    setCorrectiveLoading(true)
+    try {
+      const res  = await fetch('/api/aria', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: `HACCP Froid — appareil : ${appareil.nom}, température relevée : ${valeur}°C (seuil max ${appareil.temp_max ?? '?'}°C), motif de l'écart : ${motifLabel}. Donne une action corrective précise en 1-2 phrases pour le responsable HACCP.`,
+          history: [],
+        }),
+      })
+      const data = await res.json()
+      setCorrectiveSuggestion(data.reply || 'Surveiller et contacter votre responsable HACCP.')
+    } catch {
+      setCorrectiveSuggestion('Isoler l\'appareil, transférer les produits sensibles si nécessaire et contacter la maintenance.')
+    } finally {
+      setCorrectiveLoading(false)
+    }
+  }
+
+  const handleSelectMotif = (key) => {
+    setSelectedMotif(key)
+    if (!froidMotifModal) return
+    const label = MOTIFS.find(m => m.key === key)?.label || key
+    getCorrectiveSuggestion(froidMotifModal.appareil, label, froidMotifModal.valeur)
+  }
+
+  const confirmFroidTemp = () => {
+    if (!froidMotifModal) return
+    const { appareil, zone, valeur, conforme } = froidMotifModal
+    const motifLabel = selectedMotif === 'autre'
+      ? (motifTexte.trim() || 'Autre')
+      : (MOTIFS.find(m => m.key === selectedMotif)?.label || selectedMotif)
+    insertFroidTemp(appareil, zone, valeur, conforme, motifLabel, correctiveSuggestion)
+  }
+
+  const loadApHistory = async (apId) => {
+    if (apHistory[apId] !== undefined || historyLoading[apId]) return
+    setHistoryLoading(p => ({ ...p, [apId]: true }))
+    const { data } = await supabase.from('haccp_temperatures').select('*')
+      .eq('appareil_id', apId).eq('type', 'froid')
+      .order('created_at', { ascending: false }).limit(10)
+    setApHistory(p => ({ ...p, [apId]: data || [] }))
+    setHistoryLoading(p => ({ ...p, [apId]: false }))
   }
 
   const addZone = async () => {
@@ -557,6 +817,27 @@ export default function Haccp({ user, profile, fromDashboard, onBack, setPage })
   const formesCount = formProgs.filter(p => p.statut === 'valide').length
   const enCours     = formProgs.filter(p => p.statut === 'en_cours').length
 
+  const horsNormeCount = appareils.filter(ap => {
+    const last = temps.find(t => t.appareil_id === ap.id && t.type === 'froid')
+    return last?.conforme === false
+  }).length
+
+  const zoneStatut = (zone) => {
+    const zAps = appareils.filter(a => a.zone_id === zone.id)
+    if (!zAps.length) return 'none'
+    let hasHorsNorme = false, hasAlerte = false
+    for (const ap of zAps) {
+      const last = temps.find(t => t.appareil_id === ap.id && t.type === 'froid')
+      if (!last) continue
+      if (last.conforme === false) hasHorsNorme = true
+      else if (last.conforme === true && ap.temp_max !== null && last.valeur > ap.temp_max - 2) hasAlerte = true
+    }
+    if (hasHorsNorme) return 'rouge'
+    if (hasAlerte)    return 'alerte'
+    const allHaveTemps = zAps.every(ap => temps.some(t => t.appareil_id === ap.id && t.type === 'froid'))
+    return allHaveTemps ? 'ok' : 'partial'
+  }
+
   const scoreColor = conformite?.couleur === 'green' ? '#10B981' : conformite?.couleur === 'orange' ? '#F59E0B' : '#94A3B8'
   const scoreEmoji = conformite?.couleur === 'green' ? '🟢' : conformite?.couleur === 'orange' ? '🟠' : '⚪'
 
@@ -605,6 +886,7 @@ export default function Haccp({ user, profile, fromDashboard, onBack, setPage })
           ) : (
             <span style={{ fontSize: 15, fontWeight: 700, color: '#0F172A' }}>
               {view === 'releves'   ? '🌡️ Relevés de température' :
+               view === 'froid' && froidSubView === 'zone_detail' ? `🌡️ ${selectedZone?.nom || 'Zone'}` :
                view === 'froid'    ? '🌡️ Froid' :
                view === 'chaud'    ? '🔴 Chaud' :
                view === 'refroid'  ? '❄️ Refroidissement' :
@@ -705,9 +987,12 @@ export default function Haccp({ user, profile, fromDashboard, onBack, setPage })
                   </div>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontSize: 14, fontWeight: 700, color: '#0F172A', marginBottom: 2 }}>Relevés Froid</div>
-                    <div style={{ fontSize: 12, color: '#64748B' }}>{zones.filter(z => (z.type || 'froid') !== 'chaud').length} zone(s) configurée(s)</div>
+                    <div style={{ fontSize: 12, color: '#64748B' }}>{froidZones.length} zone(s) · {froidToday.length} relevé(s) aujourd'hui</div>
                   </div>
-                  {active && froidToday.length > 0 && (
+                  {active && horsNormeCount > 0 && (
+                    <div style={{ background: '#FEE2E2', color: '#DC2626', fontSize: 12, fontWeight: 700, padding: '2px 9px', borderRadius: 99, flexShrink: 0 }}>{horsNormeCount} ⚠️</div>
+                  )}
+                  {active && horsNormeCount === 0 && froidToday.length > 0 && (
                     <div style={{ background: '#DBEAFE', color: '#1D4ED8', fontSize: 12, fontWeight: 700, padding: '2px 9px', borderRadius: 99, flexShrink: 0 }}>{froidToday.length}</div>
                   )}
                   {!active && <span style={{ fontSize: 11.5, color: '#94A3B8', fontWeight: 500 }}>Désactivé</span>}
@@ -767,7 +1052,7 @@ export default function Haccp({ user, profile, fromDashboard, onBack, setPage })
         )}
 
         {/* ══════════════ FROID VIEW ══════════════ */}
-        {view === 'froid' && (
+        {view === 'froid' && froidSubView === 'zones' && (
           <div style={{ padding: '16px 16px 0' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
               <div style={S.sectionTitle}>Zones froides</div>
@@ -780,63 +1065,136 @@ export default function Haccp({ user, profile, fromDashboard, onBack, setPage })
                 <button onClick={() => setZonesModal(true)} style={{ ...S.btnP, marginTop: 12 }}>+ Ajouter une zone</button>
               </div>
             ) : froidZones.map(zone => {
-              const zoneAps = appareils.filter(a => a.zone_id === zone.id)
+              const statut   = zoneStatut(zone)
+              const zoneAps  = appareils.filter(a => a.zone_id === zone.id)
+              const statutCfg = {
+                rouge:   { bg: '#FEF2F2', border: '#FECACA', dot: '#EF4444', label: 'Hors norme' },
+                alerte:  { bg: '#FFFBEB', border: '#FDE68A', dot: '#F59E0B', label: 'Alerte' },
+                ok:      { bg: '#F0FDF4', border: '#BBF7D0', dot: '#10B981', label: 'Conforme' },
+                partial: { bg: '#F8FAFC', border: '#E2E8F0', dot: '#94A3B8', label: 'Partiel' },
+                none:    { bg: '#F8FAFC', border: '#E2E8F0', dot: '#CBD5E1', label: '—' },
+              }[statut]
               return (
-                <div key={zone.id} style={{ marginBottom: 18 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 8 }}>
-                    <span>{zone.type === 'ambiant' ? '🌡️' : '🔵'}</span>
-                    {zone.nom}
-                    <span style={{ fontWeight: 500, textTransform: 'none', letterSpacing: 0 }}>({zone.type === 'ambiant' ? 'ambiant' : 'froid'})</span>
+                <button
+                  key={zone.id}
+                  onClick={() => { setSelectedZone(zone); setFroidSubView('zone_detail') }}
+                  style={{ display: 'flex', alignItems: 'center', gap: 14, width: '100%', padding: '16px', borderRadius: 16, border: `1.5px solid ${statutCfg.border}`, background: statutCfg.bg, cursor: 'pointer', fontFamily: F, textAlign: 'left', marginBottom: 10 }}
+                >
+                  <div style={{ width: 42, height: 42, borderRadius: 12, background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, flexShrink: 0, border: `1.5px solid ${statutCfg.border}` }}>
+                    {zone.type === 'ambiant' ? '🌡️' : '🧊'}
                   </div>
-                  {zoneAps.length === 0 ? (
-                    <div style={{ ...S.empty, padding: '12px 0', fontSize: 12 }}>Aucun appareil dans cette zone.</div>
-                  ) : zoneAps.map(ap => {
-                    const apTemps  = todayTemps.filter(t => t.appareil_id === ap.id)
-                    const last     = apTemps[0]
-                    const isExp    = !!expanded[ap.id]
-                    const hasSeuil = ap.temp_min !== null && ap.temp_max !== null
-                    return (
-                      <div key={ap.id} style={{ ...S.card, marginBottom: 8 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontSize: 14, fontWeight: 600, color: '#0F172A' }}>{ap.nom}</div>
-                            <div style={{ fontSize: 11.5, color: '#94A3B8' }}>
-                              {hasSeuil ? `${ap.temp_min}°C – ${ap.temp_max}°C` : 'Pas de seuil'}
-                            </div>
-                          </div>
-                          {last && (
-                            <div style={{ padding: '4px 10px', borderRadius: 99, fontSize: 13, fontWeight: 700, border: '1.5px solid', flexShrink: 0, background: last.conforme === false ? '#FEF2F2' : last.conforme === true ? '#F0FDF4' : '#F8FAFC', color: last.conforme === false ? '#DC2626' : last.conforme === true ? '#16A34A' : '#64748B', borderColor: last.conforme === false ? '#FECACA' : last.conforme === true ? '#BBF7D0' : '#E2E8F0' }}>
-                              {last.valeur.toFixed(1)}°
-                            </div>
-                          )}
-                          <button onClick={() => setTempModal({ appareil: ap, zone })} style={{ width: 38, height: 38, borderRadius: 10, border: '1.5px solid #BFDBFE', background: '#EFF6FF', cursor: 'pointer', fontSize: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                            📝
-                          </button>
-                          <button onClick={() => setExpanded(p => ({ ...p, [ap.id]: !p[ap.id] }))} style={{ ...S.btnGhost, padding: '6px 8px', fontSize: 12 }}>
-                            {isExp ? '▲' : '▼'}
-                          </button>
-                        </div>
-                        {isExp && (
-                          <div style={{ marginTop: 10, borderTop: '1px solid #F1F5F9', paddingTop: 10 }}>
-                            {apTemps.length === 0 ? (
-                              <div style={{ fontSize: 12, color: '#94A3B8', textAlign: 'center', padding: '6px 0' }}>Aucune mesure aujourd'hui.</div>
-                            ) : apTemps.slice(0, 5).map(t => (
-                              <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
-                                <span style={{ fontSize: 11, color: '#94A3B8', width: 44, flexShrink: 0 }}>{fmtTime(t.created_at)}</span>
-                                <span style={{ fontSize: 14, fontWeight: 600, color: '#0F172A' }}>{t.valeur.toFixed(1)}°C</span>
-                                <span>{t.conforme === true ? '✅' : t.conforme === false ? '⚠️' : '—'}</span>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )
-                  })}
-                </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: '#0F172A', marginBottom: 2 }}>{zone.nom}</div>
+                    <div style={{ fontSize: 11.5, color: '#64748B' }}>{zoneAps.length} appareil(s)</div>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                    <div style={{ width: 8, height: 8, borderRadius: '50%', background: statutCfg.dot }} />
+                    <span style={{ fontSize: 12, fontWeight: 600, color: statutCfg.dot }}>{statutCfg.label}</span>
+                  </div>
+                  <span style={{ color: '#CBD5E1', fontSize: 18, flexShrink: 0 }}>›</span>
+                </button>
               )
             })}
           </div>
         )}
+
+        {view === 'froid' && froidSubView === 'zone_detail' && selectedZone && (() => {
+          const zoneAps  = appareils.filter(a => a.zone_id === selectedZone.id)
+          return (
+            <div style={{ padding: '16px 16px 0' }}>
+              {zoneAps.length === 0 ? (
+                <div style={S.empty}>
+                  Aucun appareil dans cette zone.<br />
+                  <button onClick={() => setZonesModal(true)} style={{ ...S.btnP, marginTop: 12 }}>+ Ajouter un appareil</button>
+                </div>
+              ) : zoneAps.map(ap => {
+                const last    = temps.find(t => t.appareil_id === ap.id && t.type === 'froid')
+                const isExp   = !!expanded[ap.id]
+                const hist    = apHistory[ap.id]
+                const loadingH = historyLoading[ap.id]
+                const hasSeuil = ap.temp_min !== null && ap.temp_max !== null
+
+                const apColor  = !last ? '#94A3B8'
+                  : last.conforme === false ? '#DC2626'
+                  : last.conforme === true && hasSeuil && last.valeur > ap.temp_max - 2 ? '#F59E0B'
+                  : last.conforme === true ? '#10B981'
+                  : '#64748B'
+                const apBg     = !last ? '#F8FAFC'
+                  : last.conforme === false ? '#FEF2F2'
+                  : apColor === '#F59E0B' ? '#FFFBEB'
+                  : last.conforme === true ? '#F0FDF4'
+                  : '#F8FAFC'
+
+                const tendance = (() => {
+                  if (!hist || hist.length < 2) return null
+                  const diff = hist[0].valeur - (hist.slice(1, 4).reduce((s, t) => s + t.valeur, 0) / Math.min(3, hist.length - 1))
+                  if (Math.abs(diff) < 0.5) return { icon: '➡️', label: 'Stable' }
+                  return diff > 0 ? { icon: '📈', label: 'En hausse' } : { icon: '📉', label: 'En baisse' }
+                })()
+
+                return (
+                  <div key={ap.id} style={{ ...S.card, marginBottom: 10 }}>
+                    {/* Ligne principale */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <button
+                        onClick={() => {
+                          setExpanded(p => ({ ...p, [ap.id]: !p[ap.id] }))
+                          if (!expanded[ap.id]) loadApHistory(ap.id)
+                        }}
+                        style={{ flex: 1, minWidth: 0, background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', padding: 0, fontFamily: F }}
+                      >
+                        <div style={{ fontSize: 14, fontWeight: 600, color: '#0F172A' }}>{ap.nom}</div>
+                        <div style={{ fontSize: 11.5, color: '#94A3B8', marginTop: 1 }}>
+                          {hasSeuil ? `${ap.temp_min}°C – ${ap.temp_max}°C` : 'Pas de seuil'}
+                          {last ? ` · ${fmtTime(last.created_at)}` : ' · Aucun relevé'}
+                        </div>
+                      </button>
+
+                      {last && (
+                        <div style={{ padding: '5px 11px', borderRadius: 99, fontSize: 14, fontWeight: 700, border: `1.5px solid ${apColor}44`, background: apBg, color: apColor, flexShrink: 0 }}>
+                          {last.valeur.toFixed(1)}°
+                        </div>
+                      )}
+
+                      <button
+                        onClick={e => { e.stopPropagation(); setFroidReleverModal({ appareil: ap, zone: selectedZone }) }}
+                        style={{ width: 40, height: 40, borderRadius: 12, border: '1.5px solid #BFDBFE', background: '#EFF6FF', cursor: 'pointer', fontSize: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+                      >📝</button>
+                    </div>
+
+                    {/* Historique expand */}
+                    {isExp && (
+                      <div style={{ marginTop: 12, borderTop: '1px solid #F1F5F9', paddingTop: 12 }}>
+                        {loadingH ? (
+                          <div style={{ textAlign: 'center', color: '#94A3B8', fontSize: 13, padding: '8px 0' }}>Chargement…</div>
+                        ) : !hist || hist.length === 0 ? (
+                          <div style={{ textAlign: 'center', color: '#94A3B8', fontSize: 12, padding: '6px 0' }}>Aucun relevé enregistré.</div>
+                        ) : (
+                          <>
+                            <MiniChart data={hist} tempMin={ap.temp_min} tempMax={ap.temp_max} />
+                            {tendance && (
+                              <div style={{ fontSize: 12, color: '#64748B', marginBottom: 8, textAlign: 'right' }}>
+                                {tendance.icon} {tendance.label}
+                              </div>
+                            )}
+                            {hist.map(t => (
+                              <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 5 }}>
+                                <span style={{ fontSize: 11, color: '#94A3B8', width: 50, flexShrink: 0 }}>{fmtTime(t.created_at)}</span>
+                                <span style={{ fontSize: 13.5, fontWeight: 600, color: '#0F172A' }}>{t.valeur.toFixed(1)}°C</span>
+                                <span style={{ fontSize: 12 }}>{t.conforme === true ? '✅' : t.conforme === false ? '⚠️' : '—'}</span>
+                                {t.motif && <span style={{ fontSize: 11, color: '#94A3B8', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.motif}</span>}
+                              </div>
+                            ))}
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )
+        })()}
 
         {/* ══════════════ CHAUD VIEW ══════════════ */}
         {view === 'chaud' && (
@@ -1225,12 +1583,27 @@ export default function Haccp({ user, profile, fromDashboard, onBack, setPage })
 
       {/* ══════════════ MODALS ══════════════ */}
 
-      {tempModal && (
-        <TempModal
-          title={tempModal.appareil.nom}
-          sub={`Zone : ${tempModal.zone.nom} · ${tempModal.appareil.temp_min !== null ? `${tempModal.appareil.temp_min}°C – ${tempModal.appareil.temp_max}°C` : 'Pas de seuil'}`}
-          onClose={() => setTempModal(null)}
-          onSubmit={takeFroidTemp}
+      {froidReleverModal && (
+        <FroidReleverModal
+          appareil={froidReleverModal.appareil}
+          zone={froidReleverModal.zone}
+          onClose={() => setFroidReleverModal(null)}
+          onSubmit={handleFroidTempSubmit}
+          saving={saving}
+        />
+      )}
+
+      {froidMotifModal && (
+        <MotifModal
+          data={froidMotifModal}
+          selectedMotif={selectedMotif}
+          motifTexte={motifTexte}
+          correctiveSuggestion={correctiveSuggestion}
+          correctiveLoading={correctiveLoading}
+          onSelectMotif={handleSelectMotif}
+          onChangeTexte={setMotifTexte}
+          onConfirm={confirmFroidTemp}
+          onClose={() => setFroidMotifModal(null)}
           saving={saving}
         />
       )}
