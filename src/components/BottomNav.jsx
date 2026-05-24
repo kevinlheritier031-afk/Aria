@@ -10,21 +10,6 @@ if (typeof document !== 'undefined' && !document.getElementById(STYLE_ID)) {
       from { transform: scaleX(0); }
       to   { transform: scaleX(1); }
     }
-    @media (max-width: 768px) {
-      button.bnav-aria-active {
-        background: none !important;
-        -webkit-appearance: none;
-        appearance: none;
-      }
-      button.bnav-aria-active > div {
-        background: none !important;
-        border-radius: 0 !important;
-        box-shadow: none !important;
-      }
-      button.bnav-aria-active > div > span {
-        background: none !important;
-      }
-    }
   `
   document.head.appendChild(s)
 }
@@ -40,20 +25,22 @@ export default function BottomNav({ page, setPage, alertDlc, alertCmd }) {
           <button
             key={item.k}
             onClick={() => setPage(item.k)}
-            className={active && item.k === 'aria' ? 'bnav-aria-active' : undefined}
             style={{
               ...S.item,
               color: active ? '#2563EB' : '#94A3B8',
             }}
           >
-            {/* Top active bar — hidden for Aria (label-only indicator) */}
-            {active && item.k !== 'aria' && <div style={S.topBar} />}
+            {active && <div style={S.topBar} />}
 
             {/* Icon + badge wrapper */}
             <div style={S.iconWrap}>
-              <span style={{ ...S.icon, fontSize: active ? 22 : 20, transition: 'font-size .15s', color: item.k === 'aria' ? '#2563EB' : 'inherit' }}>
-                {item.k === 'aria' ? `${item.emoji}︎` : item.emoji}
-              </span>
+              {item.k === 'aria' ? (
+                <span style={{ ...S.icon, ...S.ariaOrb }}>{`${item.emoji}︎`}</span>
+              ) : (
+                <span style={{ ...S.icon, fontSize: active ? 22 : 20, transition: 'font-size .15s' }}>
+                  {item.emoji}
+                </span>
+              )}
               {badge > 0 && (
                 <span style={S.badge}>{badge > 99 ? '99+' : badge}</span>
               )}
@@ -134,6 +121,19 @@ const S = {
     padding: '0 4px',
     border: '1.5px solid #fff',
     lineHeight: 1,
+  },
+  ariaOrb: {
+    width: 32,
+    height: 32,
+    borderRadius: '50%',
+    background: '#2563EB',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: 16,
+    color: '#FFFFFF',
+    lineHeight: 1,
+    flexShrink: 0,
   },
   label: {
     fontSize: 10,

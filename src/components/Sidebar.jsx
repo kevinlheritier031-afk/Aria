@@ -76,8 +76,8 @@ export default function Sidebar({ page, setPage, alertDlc, alertCmd, user, profi
 
 const S = {
   sidebar: {
-    width: 240,
-    minWidth: 240,
+    width: 260,
+    minWidth: 260,
     background: '#0F172A',
     display: 'flex',
     flexDirection: 'column',
@@ -145,7 +145,6 @@ const S = {
     transition: 'background .15s',
     textAlign: 'left',
     fontFamily: 'inherit',
-    overflow: 'hidden',
   },
   itemActive: {
     background: 'rgba(37,99,235,.18)',
