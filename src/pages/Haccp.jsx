@@ -178,6 +178,13 @@ const MOTIFS = [
   { key: 'autre',     label: 'Autre' },
 ]
 
+const MOTIFS_CHAUD = [
+  { key: 'fin_service', label: 'Fin de service' },
+  { key: 'panne',       label: 'Panne appareil' },
+  { key: 'remontee',    label: 'Remontée en cours' },
+  { key: 'autre',       label: 'Autre' },
+]
+
 // ── FroidReleverModal ─────────────────────────────────────────────────────────
 
 function FroidReleverModal({ appareil, zone, onClose, onSubmit, saving }) {
@@ -276,7 +283,7 @@ function MiniChart({ data, tempMin, tempMax }) {
 
 // ── MotifModal ────────────────────────────────────────────────────────────────
 
-function MotifModal({ data, selectedMotif, motifTexte, correctiveSuggestion, correctiveLoading, onSelectMotif, onChangeTexte, onConfirm, onClose, saving }) {
+function MotifModal({ data, selectedMotif, motifTexte, correctiveSuggestion, correctiveLoading, onSelectMotif, onChangeTexte, onConfirm, onClose, saving, motifs = MOTIFS }) {
   const { appareil, valeur, conforme } = data
   const isHorsNorme  = conforme === false
   const statusColor  = isHorsNorme ? '#DC2626' : '#F59E0B'
@@ -289,12 +296,12 @@ function MotifModal({ data, selectedMotif, motifTexte, correctiveSuggestion, cor
         <div style={{ textAlign: 'center', marginBottom: 18 }}>
           <div style={{ fontSize: 48, fontWeight: 800, color: statusColor, lineHeight: 1, marginBottom: 4 }}>{valeur.toFixed(1)}°C</div>
           <div style={{ fontSize: 13, fontWeight: 600, color: statusColor }}>{statusLabel}</div>
-          <div style={{ fontSize: 12, color: '#94A3B8', marginTop: 2 }}>{appareil.nom}</div>
+          <div style={{ fontSize: 12, color: '#94A3B8', marginTop: 2 }}>{appareil?.nom || data.platNom || ''}</div>
         </div>
 
         <div style={{ fontSize: 14, fontWeight: 700, color: '#0F172A', marginBottom: 12 }}>Motif de l'écart</div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
-          {MOTIFS.map(m => (
+          {motifs.map(m => (
             <button key={m.key} onClick={() => onSelectMotif(m.key)} style={{ padding: '8px 14px', borderRadius: 99, border: '1.5px solid', fontSize: 13, fontWeight: selectedMotif === m.key ? 700 : 400, cursor: 'pointer', fontFamily: F, background: selectedMotif === m.key ? '#FEF2F2' : '#F8FAFC', borderColor: selectedMotif === m.key ? '#EF4444' : '#E2E8F0', color: selectedMotif === m.key ? '#DC2626' : '#475569' }}>
               {m.label}
             </button>
@@ -322,6 +329,157 @@ function MotifModal({ data, selectedMotif, motifTexte, correctiveSuggestion, cor
         >{saving ? 'Enregistrement…' : 'Confirmer et enregistrer'}</button>
       </div>
     </div>
+  )
+}
+
+// ── ChaudServiceModal ─────────────────────────────────────────────────────────
+
+function ChaudServiceModal({ nom, type, heure, tempInit, onNom, onType, onHeure, onTempInit, onClose, onStart, saving }) {
+  return (
+    <div style={S.overlay} onClick={onClose}>
+      <div style={S.sheet} onClick={e => e.stopPropagation()}>
+        <div style={S.handle} />
+        <div style={{ fontSize: 16, fontWeight: 700, color: '#0F172A', marginBottom: 16 }}>Démarrer un service chaud</div>
+
+        <label style={S.label}>Nom du plat / préparation *</label>
+        <input value={nom} onChange={e => onNom(e.target.value)} style={{ ...S.input, marginBottom: 12 }} placeholder="Ex : Bœuf bourguignon" />
+
+        <label style={S.label}>Type de maintien</label>
+        <select value={type} onChange={e => onType(e.target.value)} style={{ ...S.input, marginBottom: 12 }}>
+          <option value="Bain-marie">Bain-marie</option>
+          <option value="Armoire chauffante">Armoire chauffante</option>
+          <option value="Étuve">Étuve</option>
+          <option value="Autre">Autre</option>
+        </select>
+
+        <label style={S.label}>Heure de début</label>
+        <input type="time" value={heure} onChange={e => onHeure(e.target.value)} style={{ ...S.input, marginBottom: 12 }} />
+
+        <label style={S.label}>Température initiale (°C)</label>
+        <input type="number" inputMode="decimal" value={tempInit} onChange={e => onTempInit(e.target.value)}
+          placeholder="Ex : 85.0" style={{ ...S.input, marginBottom: 20 }} />
+
+        <button onClick={onStart} disabled={!nom.trim() || saving}
+          style={{ ...S.btnP, width: '100%', background: 'linear-gradient(135deg,#F97316,#EA580C)', opacity: !nom.trim() ? .5 : 1 }}>
+          {saving ? 'Enregistrement…' : '🔴 Lancer le service'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ── ChaudReleverModal ─────────────────────────────────────────────────────────
+
+function ChaudReleverModal({ plat, onClose, onSubmit, saving }) {
+  const [raw, setRaw] = useState('')
+  const numVal = raw !== '' && !isNaN(parseFloat(raw)) ? parseFloat(raw) : null
+  const display = numVal !== null ? numVal.toFixed(1) : '—'
+
+  const step = (dir) => {
+    const base    = numVal !== null ? numVal : 63
+    const next    = Math.round((base + dir * 0.5) * 10) / 10
+    const clamped = Math.max(0, Math.min(130, next))
+    setRaw(String(clamped))
+  }
+
+  const conforme = numVal !== null ? numVal >= 63 : null
+  const displayColor = conforme === true ? '#16A34A' : conforme === false ? '#DC2626' : '#0F172A'
+
+  return (
+    <div style={S.overlay} onClick={onClose}>
+      <div style={{ ...S.sheet, padding: '24px 20px 40px' }} onClick={e => e.stopPropagation()}>
+        <div style={S.handle} />
+        <div style={{ fontSize: 16, fontWeight: 700, color: '#0F172A', marginBottom: 2 }}>{plat.nom}</div>
+        <div style={{ fontSize: 12, color: '#94A3B8', marginBottom: 20 }}>{plat.type} · Minimum légal : 63 °C</div>
+
+        <div style={{ textAlign: 'center', marginBottom: 6 }}>
+          <span style={{ fontSize: 72, fontWeight: 800, color: displayColor, letterSpacing: -3, lineHeight: 1 }}>{display}</span>
+          <span style={{ fontSize: 32, fontWeight: 600, color: '#94A3B8' }}>°C</span>
+        </div>
+        <div style={{ textAlign: 'center', fontSize: 13, marginBottom: 18, color: conforme === true ? '#16A34A' : conforme === false ? '#DC2626' : '#94A3B8', fontWeight: 600 }}>
+          {conforme === true ? '✅ Conforme' : conforme === false ? '🔴 Non conforme' : ''}
+        </div>
+
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 16 }}>
+          <button onClick={() => step(-1)} style={{ width: 52, height: 52, borderRadius: 14, border: '1.5px solid #FED7AA', background: '#FFF7ED', cursor: 'pointer', fontSize: 26, fontWeight: 700, color: '#F97316', flexShrink: 0 }}>−</button>
+          <input
+            type="number" inputMode="decimal" value={raw}
+            onChange={e => { const v = e.target.value; if (v === '' || /^\d*\.?\d*$/.test(v)) setRaw(v) }}
+            placeholder="0.0"
+            style={{ flex: 1, fontSize: 22, fontWeight: 700, border: 'none', borderBottom: '2px solid #F97316', textAlign: 'center', outline: 'none', background: 'transparent', color: '#0F172A', fontFamily: F, padding: '4px 0' }}
+          />
+          <button onClick={() => step(1)} style={{ width: 52, height: 52, borderRadius: 14, border: '1.5px solid #FED7AA', background: '#FFF7ED', cursor: 'pointer', fontSize: 26, fontWeight: 700, color: '#F97316', flexShrink: 0 }}>+</button>
+        </div>
+
+        <button onClick={() => numVal !== null && !saving && onSubmit(numVal)} disabled={numVal === null || saving}
+          style={{ ...S.btnP, width: '100%', background: 'linear-gradient(135deg,#F97316,#EA580C)', opacity: (numVal === null || saving) ? .5 : 1 }}>
+          {saving ? 'Enregistrement…' : 'Valider'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ── ArcProgress ───────────────────────────────────────────────────────────────
+
+function ArcProgress({ totalMs, startTime }) {
+  const elapsed = Date.now() - new Date(startTime).getTime()
+  const pct     = Math.min(1, Math.max(0, elapsed / totalMs))
+  const R = 26, cx = 34, cy = 34, size = 68
+  const circ = 2 * Math.PI * R
+  const dash = circ * pct
+  const mins = Math.floor(elapsed / 60000)
+
+  return (
+    <svg width={size} height={size} style={{ flexShrink: 0 }}>
+      <circle cx={cx} cy={cy} r={R} fill="none" stroke="#E2E8F0" strokeWidth={5} />
+      <circle cx={cx} cy={cy} r={R} fill="none" stroke={pct >= 1 ? '#EF4444' : '#2563EB'} strokeWidth={5}
+        strokeDasharray={`${dash.toFixed(2)} ${circ.toFixed(2)}`} strokeLinecap="round"
+        transform={`rotate(-90 ${cx} ${cy})`}
+      />
+      <text x={cx} y={cy} textAnchor="middle" dominantBaseline="middle" fontSize={10} fontWeight={700} fill="#0F172A" fontFamily={F}>
+        {mins >= 60 ? `${Math.floor(mins / 60)}h${String(mins % 60).padStart(2, '0')}` : `${mins}'`}
+      </text>
+    </svg>
+  )
+}
+
+// ── RefroidChart ──────────────────────────────────────────────────────────────
+
+function RefroidChart({ data, debut }) {
+  if (!data || data.length === 0) return null
+  const W = 280, H = 90, P = 12
+  const debutMs    = new Date(debut).getTime()
+  const maxMin     = 120
+  const minT       = -5
+  const maxT       = 70
+
+  const toX = (ts) => P + (Math.min(maxMin, (new Date(ts).getTime() - debutMs) / 60000) / maxMin) * (W - P * 2)
+  const toY = (v)  => H - P - ((v - minT) / (maxT - minT)) * (H - P * 2)
+
+  const chrono = [...data].sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
+  const pts    = chrono.map(t => `${toX(t.created_at).toFixed(1)},${toY(t.valeur).toFixed(1)}`).join(' ')
+
+  return (
+    <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ display: 'block', marginBottom: 6 }}>
+      {/* Zone verte conforme (<10°C) */}
+      <rect x={P} y={toY(10).toFixed(1)} width={W - P * 2} height={(H - P - toY(10)).toFixed(1)} fill="#F0FDF4" opacity={0.6} />
+      {/* Zone rouge critique (>25°C) */}
+      <rect x={P} y={P} width={W - P * 2} height={(toY(25) - P).toFixed(1)} fill="#FEF2F2" opacity={0.5} />
+      {/* Seuils */}
+      <line x1={P} y1={toY(25).toFixed(1)} x2={W - P} y2={toY(25).toFixed(1)} stroke="#F59E0B" strokeWidth={1} strokeDasharray="3,2" />
+      <line x1={P} y1={toY(10).toFixed(1)} x2={W - P} y2={toY(10).toFixed(1)} stroke="#EF4444" strokeWidth={1} strokeDasharray="3,2" />
+      {/* Courbe idéale théorique */}
+      <line x1={P} y1={toY(65).toFixed(1)} x2={(W - P).toFixed(1)} y2={toY(10).toFixed(1)} stroke="#94A3B8" strokeWidth={1} strokeDasharray="4,3" />
+      {/* Relevés */}
+      {chrono.length >= 2 && <polyline points={pts} fill="none" stroke="#2563EB" strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />}
+      {chrono.map((t, i) => (
+        <circle key={i} cx={toX(t.created_at).toFixed(1)} cy={toY(t.valeur).toFixed(1)} r={3.5}
+          fill={t.conforme === false ? '#EF4444' : t.conforme === true ? '#10B981' : '#F59E0B'}
+          stroke="#fff" strokeWidth={1.5}
+        />
+      ))}
+    </svg>
   )
 }
 
@@ -369,11 +527,26 @@ export default function Haccp({ user, profile, fromDashboard, onBack, setPage })
   const [apHistory,             setApHistory]             = useState({})
   const [historyLoading,        setHistoryLoading]        = useState({})
 
-  // Chaud
+  // Chaud — services complets
+  const [platsChaud,                setPlatsChaud]                = useState([])
+  const [platsChaudDone,            setPlatsChaudDone]            = useState([])
+  const [chaudServiceModal,         setChaudServiceModal]         = useState(false)
+  const [chaudReleverModal,         setChaudReleverModal]         = useState(null)
+  const [chaudMotifModal,           setChaudMotifModal]           = useState(null)
+  const [chaudMotifSel,             setChaudMotifSel]             = useState(null)
+  const [chaudMotifTexte,           setChaudMotifTexte]           = useState('')
+  const [chaudCorrectiveLoading,    setChaudCorrectiveLoading]    = useState(false)
+  const [chaudCorrectiveSuggestion, setChaudCorrectiveSuggestion] = useState(null)
+  const [newChaudNom,               setNewChaudNom]               = useState('')
+  const [newChaudType,              setNewChaudType]              = useState('Bain-marie')
+  const [newChaudHeure,             setNewChaudHeure]             = useState(() => new Date().toTimeString().slice(0, 5))
+  const [newChaudTemp,              setNewChaudTemp]              = useState('')
+  // Alertes sonores toggle local
+  const [sonActif,                  setSonActif]                  = useState(() => localStorage.getItem('aria_son_actif') !== 'false')
+
+  // Chaud (legacy settings)
   const [settings,      setSettings]      = useState({ nb_prises_chaud_par_service: 2 })
-  const [chaudModal,    setChaudModal]    = useState(false)
   const [settingsModal, setSettingsModal] = useState(false)
-  const [serviceDebut]                    = useState(() => new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }))
 
   // Refroidissement
   const [plats,      setPlats]      = useState([])
@@ -416,7 +589,7 @@ export default function Haccp({ user, profile, fromDashboard, onBack, setPage })
       setModules(etab.settings?.modules || {})
 
       const since24h = new Date(Date.now() - 86400000).toISOString()
-      const [zonesRes, apRes, settRes, platsRes, tempsRes, formRes, equipeRes] = await Promise.all([
+      const [zonesRes, apRes, settRes, platsRes, tempsRes, formRes, equipeRes, platsChaudRes] = await Promise.all([
         supabase.from('haccp_zones').select('*').eq('etablissement_id', realEid).order('nom'),
         supabase.from('haccp_appareils').select('*').eq('etablissement_id', realEid).order('nom'),
         supabase.from('haccp_settings').select('*').eq('etablissement_id', realEid).maybeSingle(),
@@ -424,6 +597,7 @@ export default function Haccp({ user, profile, fromDashboard, onBack, setPage })
         supabase.from('haccp_temperatures').select('*').eq('etablissement_id', realEid).gte('created_at', since24h).order('created_at', { ascending: false }),
         supabase.from('haccp_formation_progression').select('*').eq('etablissement_id', realEid).eq('user_id', user.id),
         supabase.from('equipe_membres').select('id').eq('etablissement_id', realEid),
+        supabase.from('haccp_plats_chaud').select('*').eq('etablissement_id', realEid).gte('created_at', since24h).order('debut_service', { ascending: false }),
       ])
 
       if (zonesRes.data)  setZones(zonesRes.data)
@@ -435,6 +609,10 @@ export default function Haccp({ user, profile, fromDashboard, onBack, setPage })
       if (platsRes.data) {
         setPlats(platsRes.data.filter(p => p.statut === 'en_cours'))
         setPlatsDone(platsRes.data.filter(p => p.statut !== 'en_cours' && new Date(p.created_at) > new Date(Date.now() - 86400000)))
+      }
+      if (platsChaudRes.data) {
+        setPlatsChaud(platsChaudRes.data.filter(p => p.statut === 'actif'))
+        setPlatsChaudDone(platsChaudRes.data.filter(p => p.statut === 'clôturé'))
       }
 
       calculateConformiteScore(realEid).then(setConformite).catch(() => {})
@@ -461,7 +639,7 @@ export default function Haccp({ user, profile, fromDashboard, onBack, setPage })
   // ── Froid ──────────────────────────────────────────────────────────────────
 
   const playBeep = (type) => {
-    if (!isActive('haccp_alertes_sonores')) return
+    if (!sonActif) return
     try {
       const ctx  = new (window.AudioContext || window.webkitAudioContext)()
       const beep = (freq, start, dur) => {
@@ -565,6 +743,109 @@ export default function Haccp({ user, profile, fromDashboard, onBack, setPage })
     setHistoryLoading(p => ({ ...p, [apId]: false }))
   }
 
+  // ── Chaud — services ────────────────────────────────────────────────────────
+
+  const startChaudService = async () => {
+    if (!newChaudNom.trim() || !eid) return
+    setSaving(true)
+    const [h, m] = newChaudHeure.split(':').map(Number)
+    const debut  = new Date(); debut.setHours(h, m, 0, 0)
+    const { data } = await supabase.from('haccp_plats_chaud').insert({
+      etablissement_id: eid,
+      nom:           newChaudNom.trim(),
+      type:          newChaudType,
+      debut_service: debut.toISOString(),
+      temp_initiale: newChaudTemp !== '' ? parseFloat(newChaudTemp) : null,
+      statut:        'actif',
+      prise_par:     user.id,
+    }).select().single()
+    if (data) {
+      setPlatsChaud(p => [data, ...p])
+      if (newChaudTemp !== '' && parseFloat(newChaudTemp) >= 63) {
+        await supabase.from('haccp_temperatures').insert({
+          etablissement_id: eid, type: 'chaud', valeur: parseFloat(newChaudTemp),
+          conforme: true, prise_par: user.id, plat_nom: newChaudNom.trim(),
+        }).select().single().then(r => { if (r.data) setTemps(p => [r.data, ...p]) })
+      }
+    }
+    setSaving(false)
+    setChaudServiceModal(false)
+    setNewChaudNom(''); setNewChaudType('Bain-marie'); setNewChaudTemp('')
+    setNewChaudHeure(new Date().toTimeString().slice(0, 5))
+  }
+
+  const handleChaudTempSubmit = (valeur) => {
+    if (!chaudReleverModal || !eid) return
+    const { plat } = chaudReleverModal
+    if (valeur < 63) {
+      setChaudReleverModal(null)
+      setChaudMotifModal({ platNom: plat.nom, valeur, conforme: false, plat })
+      setChaudMotifSel(null); setChaudMotifTexte(''); setChaudCorrectiveSuggestion(null)
+      playBeep('hors_norme')
+      return
+    }
+    insertChaudReleve(plat, valeur, null, null)
+  }
+
+  const insertChaudReleve = async (plat, valeur, motif, actionCorrective) => {
+    setSaving(true)
+    const conforme = valeur >= 63
+    const { data } = await supabase.from('haccp_temperatures').insert({
+      etablissement_id: eid, type: 'chaud', valeur, conforme,
+      prise_par: user.id, plat_nom: plat.nom,
+      ...(motif            ? { motif }                          : {}),
+      ...(actionCorrective ? { action_corrective: actionCorrective } : {}),
+    }).select().single()
+    if (data) setTemps(p => [data, ...p])
+    setSaving(false)
+    setChaudReleverModal(null)
+    setChaudMotifModal(null)
+    playBeep(conforme ? 'conforme' : 'hors_norme')
+    setFeedback({ conforme, valeur, seuil: 63 })
+  }
+
+  const getChaudCorrectiveSuggestion = async (platNom, motifLabel, valeur) => {
+    setChaudCorrectiveLoading(true)
+    try {
+      const res  = await fetch('/api/aria', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: `HACCP Chaud — plat : ${platNom}, température relevée : ${valeur}°C (seuil légal 63°C), motif : ${motifLabel}. Donne une action corrective précise en 1-2 phrases.`,
+          history: [],
+        }),
+      })
+      const data = await res.json()
+      setChaudCorrectiveSuggestion(data.reply || 'Réchauffer immédiatement ou éliminer si impossible à remettre en conformité.')
+    } catch {
+      setChaudCorrectiveSuggestion('Réchauffer le plat au-delà de 63°C ou le retirer du service et alerter le responsable.')
+    } finally {
+      setChaudCorrectiveLoading(false)
+    }
+  }
+
+  const handleSelectChaudMotif = (key) => {
+    setChaudMotifSel(key)
+    if (!chaudMotifModal) return
+    const label = MOTIFS_CHAUD.find(m => m.key === key)?.label || key
+    getChaudCorrectiveSuggestion(chaudMotifModal.platNom, label, chaudMotifModal.valeur)
+  }
+
+  const confirmChaudReleve = () => {
+    if (!chaudMotifModal) return
+    const { plat, valeur } = chaudMotifModal
+    const motifLabel = chaudMotifSel === 'autre'
+      ? (chaudMotifTexte.trim() || 'Autre')
+      : (MOTIFS_CHAUD.find(m => m.key === chaudMotifSel)?.label || chaudMotifSel)
+    insertChaudReleve(plat, valeur, motifLabel, chaudCorrectiveSuggestion)
+  }
+
+  const clotureChaudService = async (plat) => {
+    if (!eid) return
+    await supabase.from('haccp_plats_chaud').update({ statut: 'clôturé', fin_service: new Date().toISOString() }).eq('id', plat.id)
+    setPlatsChaud(p => p.filter(x => x.id !== plat.id))
+    setPlatsChaudDone(p => [{ ...plat, statut: 'clôturé', fin_service: new Date().toISOString() }, ...p])
+  }
+
   const addZone = async () => {
     if (!newZNom.trim() || !eid) return
     setSavingZone(true)
@@ -587,21 +868,7 @@ export default function Haccp({ user, profile, fromDashboard, onBack, setPage })
     setSavingZone(false)
   }
 
-  // ── Chaud ──────────────────────────────────────────────────────────────────
-  const takeChaudTemp = async (valeur, platNom) => {
-    if (!eid) return
-    setSaving(true)
-    const conforme = valeur >= 63
-    const { data } = await supabase.from('haccp_temperatures').insert({
-      etablissement_id: eid, type: 'chaud', valeur,
-      conforme, prise_par: user.id, plat_nom: platNom || null,
-    }).select().single()
-    if (data) setTemps(p => [data, ...p])
-    setSaving(false)
-    setChaudModal(false)
-    setFeedback({ conforme, valeur, seuil: 63 })
-  }
-
+  // ── Chaud (legacy settings) ────────────────────────────────────────────────
   const saveSettings = async (nb) => {
     if (!eid) return
     await supabase.from('haccp_settings').upsert({ etablissement_id: eid, nb_prises_chaud_par_service: nb }, { onConflict: 'etablissement_id' })
@@ -882,6 +1149,12 @@ export default function Haccp({ user, profile, fromDashboard, onBack, setPage })
                   {conformite.score}% conforme {scoreEmoji}
                 </button>
               )}
+              <button
+                onClick={() => setSonActif(v => { const next = !v; localStorage.setItem('aria_son_actif', String(next)); return next })}
+                style={{ marginLeft: 'auto', background: 'none', border: `1px solid ${sonActif ? '#BFDBFE' : '#E2E8F0'}`, borderRadius: 20, padding: '2px 10px', fontSize: 12, fontWeight: 600, cursor: 'pointer', color: sonActif ? '#2563EB' : '#94A3B8', fontFamily: F }}
+              >
+                {sonActif ? '🔔 Son ON' : '🔕 Son OFF'}
+              </button>
             </div>
           ) : (
             <span style={{ fontSize: 15, fontWeight: 700, color: '#0F172A' }}>
@@ -1199,51 +1472,109 @@ export default function Haccp({ user, profile, fromDashboard, onBack, setPage })
         {/* ══════════════ CHAUD VIEW ══════════════ */}
         {view === 'chaud' && (
           <div style={{ padding: '16px 16px 0' }}>
-            <div style={{ ...S.card, marginBottom: 16, background: 'linear-gradient(135deg,#FFF7ED,#FFFBEB)', borderColor: '#FED7AA' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <div>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: '#92400E', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 2 }}>Service en cours</div>
-                  <div style={{ fontSize: 28, fontWeight: 800, color: '#0F172A', lineHeight: 1.1 }}>{serviceDebut}</div>
-                  <div style={{ fontSize: 12, color: '#94A3B8', marginTop: 2 }}>Heure de début</div>
-                </div>
-                <button onClick={() => setSettingsModal(true)} style={S.btnGhost}>⚙️</button>
-              </div>
+            <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
+              <button onClick={() => setChaudServiceModal(true)} style={{ ...S.btnP, flex: 1, background: 'linear-gradient(135deg,#F97316,#EA580C)' }}>
+                🔴 Démarrer un service chaud
+              </button>
+              <button onClick={() => setSettingsModal(true)} style={S.btnGhost}>⚙️</button>
             </div>
 
-            <div style={{ fontSize: 12, fontWeight: 600, color: '#64748B', marginBottom: 12 }}>
-              Prises de température ({chaudToday.length} / {nb} prévues)
+            <div style={{ background: '#FFF7ED', border: '1px solid #FED7AA', borderRadius: 12, padding: '10px 14px', fontSize: 12.5, color: '#92400E', marginBottom: 16 }}>
+              ℹ️ Maintien à chaud légal : minimum <strong>63 °C</strong> — relevé obligatoire toutes les heures.
             </div>
 
-            {Array.from({ length: Math.max(nb, chaudToday.length + (chaudToday.length < nb ? 0 : 1)) }, (_, i) => {
-              const done = chaudToday[i]
-              return (
-                <div key={i} style={{ ...S.card, marginBottom: 8 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                    <div style={{ width: 36, height: 36, borderRadius: '50%', background: done ? (done.conforme ? '#F0FDF4' : '#FEF2F2') : '#EFF6FF', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: done ? 18 : 14, fontWeight: 700, flexShrink: 0, color: done ? (done.conforme ? '#16A34A' : '#DC2626') : '#2563EB' }}>
-                      {done ? (done.conforme ? '✅' : '⚠️') : `${i + 1}`}
-                    </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 14, fontWeight: 600, color: '#0F172A' }}>
-                        {done ? (done.plat_nom || 'Plat non renseigné') : `Prise ${i + 1}`}
+            {/* Services actifs */}
+            {platsChaud.length > 0 && (
+              <>
+                <div style={{ ...S.sectionTitle, marginBottom: 10 }}>Services en cours</div>
+                {platsChaud.map(plat => {
+                  const platTemps  = temps.filter(t => t.type === 'chaud' && t.plat_nom === plat.nom)
+                  const lastReleve = platTemps[0]
+                  const debut      = new Date(plat.debut_service)
+                  const refBase    = lastReleve ? new Date(lastReleve.created_at) : debut
+                  const nextMs     = refBase.getTime() + 3600000
+                  const minsLeft   = Math.max(0, Math.round((nextMs - Date.now()) / 60000))
+                  const isOverdue  = minsLeft === 0
+                  const barPct     = Math.min(100, isOverdue ? 100 : ((60 - minsLeft) / 60) * 100)
+
+                  return (
+                    <div key={plat.id} style={{ ...S.card, marginBottom: 12, borderLeft: `4px solid ${lastReleve?.conforme === false ? '#EF4444' : '#F97316'}` }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 15, fontWeight: 700, color: '#0F172A' }}>{plat.nom}</div>
+                          <div style={{ fontSize: 12, color: '#94A3B8' }}>
+                            {plat.type} · Depuis {fmtTime(debut)} ({elapsed(debut)})
+                          </div>
+                        </div>
+                        <button onClick={() => clotureChaudService(plat)} style={{ ...S.btnGhost, fontSize: 12, padding: '5px 10px', flexShrink: 0 }}>Clôturer</button>
                       </div>
-                      {done && (
-                        <div style={{ fontSize: 12, color: '#94A3B8' }}>{done.valeur.toFixed(1)}°C · {fmtTime(done.created_at)}</div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                        {lastReleve ? (
+                          <div style={{ padding: '4px 10px', borderRadius: 99, fontSize: 14, fontWeight: 700, border: '1.5px solid', background: lastReleve.conforme ? '#F0FDF4' : '#FEF2F2', color: lastReleve.conforme ? '#16A34A' : '#DC2626', borderColor: lastReleve.conforme ? '#BBF7D0' : '#FECACA', flexShrink: 0 }}>
+                            {lastReleve.valeur.toFixed(1)}°C
+                          </div>
+                        ) : (
+                          <div style={{ fontSize: 12, color: '#94A3B8', flexShrink: 0 }}>Aucun relevé</div>
+                        )}
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          {isOverdue
+                            ? <div style={{ fontSize: 12, color: '#EF4444', fontWeight: 700 }}>⚠️ Relevé requis maintenant</div>
+                            : <div style={{ fontSize: 12, color: '#64748B' }}>Prochain relevé dans <strong>{minsLeft} min</strong></div>
+                          }
+                        </div>
+                        <button
+                          onClick={() => setChaudReleverModal({ plat })}
+                          style={{ ...S.btnP, padding: '8px 14px', fontSize: 13, flexShrink: 0, background: isOverdue ? 'linear-gradient(135deg,#EF4444,#DC2626)' : 'linear-gradient(135deg,#F97316,#EA580C)', animation: isOverdue ? 'haccp-pulse 1.5s ease-in-out infinite' : 'none' }}
+                        >
+                          📝 Relever
+                        </button>
+                      </div>
+
+                      <div style={{ height: 4, background: '#FED7AA', borderRadius: 99, overflow: 'hidden' }}>
+                        <div style={{ height: '100%', width: `${barPct}%`, background: isOverdue ? '#EF4444' : '#F97316', borderRadius: 99, transition: 'width .3s' }} />
+                      </div>
+
+                      {platTemps.length > 0 && (
+                        <div style={{ marginTop: 10, fontSize: 11.5, color: '#64748B' }}>
+                          {platTemps.length} relevé(s) · Dernier : {fmtTime(platTemps[0].created_at)}
+                        </div>
                       )}
                     </div>
-                    {!done && <button onClick={() => setChaudModal(true)} style={S.btnP}>Prendre</button>}
-                    {done && (
-                      <div style={{ padding: '4px 10px', borderRadius: 99, fontSize: 13, fontWeight: 700, border: '1.5px solid', flexShrink: 0, background: done.conforme ? '#F0FDF4' : '#FEF2F2', color: done.conforme ? '#16A34A' : '#DC2626', borderColor: done.conforme ? '#BBF7D0' : '#FECACA' }}>
-                        {done.valeur.toFixed(1)}°
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )
-            })}
+                  )
+                })}
+              </>
+            )}
 
-            <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 12, padding: '10px 14px', fontSize: 12.5, color: '#1D4ED8', marginTop: 12 }}>
-              ℹ️ Maintien à chaud légal : minimum <strong>63 °C</strong> pendant tout le service.
-            </div>
+            {/* Terminés 24h */}
+            {platsChaudDone.length > 0 && (
+              <>
+                <div style={{ ...S.sectionTitle, marginTop: platsChaud.length > 0 ? 16 : 0, marginBottom: 10 }}>Terminés (24 h)</div>
+                {platsChaudDone.map(p => {
+                  const platTemps = temps.filter(t => t.type === 'chaud' && t.plat_nom === p.nom)
+                  const nbConf    = platTemps.filter(t => t.conforme).length
+                  return (
+                    <div key={p.id} style={{ ...S.card, marginBottom: 8, borderLeft: '4px solid #94A3B8' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div>
+                          <div style={{ fontSize: 14, fontWeight: 600, color: '#0F172A' }}>{p.nom}</div>
+                          <div style={{ fontSize: 12, color: '#94A3B8' }}>
+                            {p.type} · {fmtTime(p.debut_service)}{p.fin_service ? ` → ${fmtTime(p.fin_service)}` : ''} · {platTemps.length} relevé(s)
+                          </div>
+                        </div>
+                        <span style={{ fontSize: 11, fontWeight: 600, color: nbConf === platTemps.length ? '#10B981' : '#EF4444' }}>
+                          {nbConf === platTemps.length ? '✅' : '⚠️'} Clôturé
+                        </span>
+                      </div>
+                    </div>
+                  )
+                })}
+              </>
+            )}
+
+            {platsChaud.length === 0 && platsChaudDone.length === 0 && (
+              <div style={S.empty}>Aucun service chaud en cours.<br />Appuyez sur "Démarrer un service chaud" pour commencer.</div>
+            )}
           </div>
         )}
 
@@ -1260,16 +1591,35 @@ export default function Haccp({ user, profile, fromDashboard, onBack, setPage })
                 {plats.map(plat => {
                   const debut    = new Date(plat.debut_cellule)
                   const platTmps = temps.filter(t => t.type === 'refroidissement' && t.plat_nom === plat.nom)
+                  const critAt2h = platTmps.find(t => t.refroidissement_etape === '2h' && t.conforme === false)
+
                   return (
                     <div key={plat.id} style={{ ...S.card, marginBottom: 12 }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
-                        <div>
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 12 }}>
+                        <ArcProgress totalMs={7200000} startTime={plat.debut_cellule} />
+                        <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ fontSize: 15, fontWeight: 700, color: '#0F172A' }}>{plat.nom}</div>
-                          <div style={{ fontSize: 12, color: '#94A3B8' }}>
+                          <div style={{ fontSize: 12, color: '#94A3B8', marginBottom: 4 }}>
                             En cellule depuis {fmtTime(debut)} · {elapsed(debut)} écoulé
                           </div>
+                          {(() => {
+                            const nextEtape = ETAPES.slice(1).find(e => !platTmps.find(t => t.refroidissement_etape === e.key) && Date.now() < debut.getTime() + e.ms)
+                            if (!nextEtape) return null
+                            const minsLeft = Math.max(0, Math.round((debut.getTime() + nextEtape.ms - Date.now()) / 60000))
+                            return (
+                              <div style={{ fontSize: 11.5, color: minsLeft <= 5 ? '#EF4444' : '#64748B', fontWeight: minsLeft <= 5 ? 700 : 400 }}>
+                                Prochain checkpoint ({nextEtape.label}) dans {minsLeft} min
+                              </div>
+                            )
+                          })()}
                         </div>
                       </div>
+
+                      {/* Courbe de température */}
+                      {platTmps.length > 0 && (
+                        <RefroidChart data={platTmps} debut={plat.debut_cellule} />
+                      )}
+
                       <div style={{ display: 'flex', gap: 6 }}>
                         {ETAPES.map(etape => {
                           const due    = Date.now() >= debut.getTime() + etape.ms
@@ -1295,6 +1645,17 @@ export default function Haccp({ user, profile, fromDashboard, onBack, setPage })
                           )
                         })}
                       </div>
+
+                      {critAt2h && (
+                        <div style={{ marginTop: 12, background: '#FEF2F2', border: '1.5px solid #FECACA', borderRadius: 12, padding: '12px 14px' }}>
+                          <div style={{ fontSize: 13, fontWeight: 700, color: '#DC2626', marginBottom: 4 }}>⚠️ Non-conformité critique</div>
+                          <div style={{ fontSize: 12.5, color: '#7F1D1D', lineHeight: 1.6 }}>
+                            La température de <strong>{plat.nom}</strong> est de <strong>{critAt2h.valeur.toFixed(1)}°C</strong> après 2h en cellule.
+                            Action obligatoire : <strong>éliminer le produit</strong> ou contacter immédiatement votre responsable.
+                            Cette non-conformité est enregistrée.
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )
                 })}
@@ -1608,14 +1969,38 @@ export default function Haccp({ user, profile, fromDashboard, onBack, setPage })
         />
       )}
 
-      {chaudModal && (
-        <TempModal
-          title="Température à chaud"
-          sub="Maintien chaud — minimum 63 °C"
-          extra={{ label: 'Nom du plat (optionnel)', placeholder: 'Ex : Blanquette de veau' }}
-          onClose={() => setChaudModal(false)}
-          onSubmit={takeChaudTemp}
+      {chaudServiceModal && (
+        <ChaudServiceModal
+          nom={newChaudNom} type={newChaudType} heure={newChaudHeure} tempInit={newChaudTemp}
+          onNom={setNewChaudNom} onType={setNewChaudType} onHeure={setNewChaudHeure} onTempInit={setNewChaudTemp}
+          onClose={() => setChaudServiceModal(false)}
+          onStart={startChaudService}
           saving={saving}
+        />
+      )}
+
+      {chaudReleverModal && (
+        <ChaudReleverModal
+          plat={chaudReleverModal.plat}
+          onClose={() => setChaudReleverModal(null)}
+          onSubmit={handleChaudTempSubmit}
+          saving={saving}
+        />
+      )}
+
+      {chaudMotifModal && (
+        <MotifModal
+          data={{ appareil: null, platNom: chaudMotifModal.platNom, valeur: chaudMotifModal.valeur, conforme: chaudMotifModal.conforme }}
+          selectedMotif={chaudMotifSel}
+          motifTexte={chaudMotifTexte}
+          correctiveSuggestion={chaudCorrectiveSuggestion}
+          correctiveLoading={chaudCorrectiveLoading}
+          onSelectMotif={handleSelectChaudMotif}
+          onChangeTexte={setChaudMotifTexte}
+          onConfirm={confirmChaudReleve}
+          onClose={() => setChaudMotifModal(null)}
+          saving={saving}
+          motifs={MOTIFS_CHAUD}
         />
       )}
 

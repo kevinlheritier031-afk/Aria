@@ -572,3 +572,27 @@ create policy "haccp_formation_all" on haccp_formation_progression
     etablissement_id in (select id from etablissements where owner_id = auth.uid())
     or user_id = auth.uid()
   );
+
+-- ── haccp_plats_chaud ─────────────────────────────────────────────────────────
+
+create table if not exists haccp_plats_chaud (
+  id               uuid primary key default gen_random_uuid(),
+  etablissement_id uuid references etablissements(id) on delete cascade,
+  nom              text not null,
+  type             text not null,
+  debut_service    timestamptz not null,
+  fin_service      timestamptz,
+  temp_initiale    numeric,
+  statut           text default 'actif' check (statut in ('actif','clôturé')),
+  prise_par        uuid references profiles(id),
+  created_at       timestamptz default now()
+);
+
+alter table haccp_plats_chaud enable row level security;
+
+drop policy if exists "haccp_plats_chaud_all" on haccp_plats_chaud;
+
+create policy "haccp_plats_chaud_all" on haccp_plats_chaud
+  for all
+  using      (etablissement_id in (select id from etablissements where owner_id = auth.uid()))
+  with check (etablissement_id in (select id from etablissements where owner_id = auth.uid()));
