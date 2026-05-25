@@ -50,14 +50,16 @@ function Toast({ msg, type }) {
 }
 
 function FourModal({ f, onSave, onDelete, onClose, saving }) {
-  const [nom,   setNom]   = useState(f.nom   || '')
-  const [mode,  setMode]  = useState(f.mode  || 'tel')
-  const [tel,   setTel]   = useState(f.tel   || '')
-  const [email, setEmail] = useState(f.email || '')
-  const [jours, setJours] = useState(f.jours || [])
+  const [nom,     setNom]     = useState(f.nom     || '')
+  const [mode,    setMode]    = useState(f.mode    || 'tel')
+  const [tel,     setTel]     = useState(f.tel     || '')
+  const [email,   setEmail]   = useState(f.email   || '')
+  const [siret,   setSiret]   = useState(f.siret   || '')
+  const [adresse, setAdresse] = useState(f.adresse || '')
+  const [jours,   setJours]   = useState(f.jours   || [])
 
   const toggleJ = j => setJours(prev => prev.includes(j) ? prev.filter(x => x !== j) : [...prev, j])
-  const data    = { ...f, nom, mode, tel, email, jours }
+  const data    = { ...f, nom, mode, tel, email, siret, adresse, jours }
 
   return (
     <div
@@ -84,6 +86,17 @@ function FourModal({ f, onSave, onDelete, onClose, saving }) {
           <div>
             <label style={S.label}>Email</label>
             <input value={email} onChange={e => setEmail(e.target.value)} style={S.inputSm} placeholder="commandes@..." />
+          </div>
+        </div>
+
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:12 }}>
+          <div>
+            <label style={S.label}>SIRET</label>
+            <input value={siret} onChange={e => setSiret(e.target.value)} style={S.inputSm} placeholder="14 chiffres" />
+          </div>
+          <div>
+            <label style={S.label}>Adresse</label>
+            <input value={adresse} onChange={e => setAdresse(e.target.value)} style={S.inputSm} placeholder="Adresse postale" />
           </div>
         </div>
 
@@ -150,9 +163,10 @@ export default function Parametres({ user, profile: initProfile, setProfile, onL
   const [zones,       setZones]       = useState([])
 
   // Fournisseurs
-  const [fours,       setFours]       = useState([])
-  const [eid,         setEid]         = useState(null)
-  const [fourModal,   setFourModal]   = useState(null)
+  const [fours,            setFours]            = useState([])
+  const [eid,              setEid]              = useState(null)
+  const [fourModal,        setFourModal]        = useState(null)
+  const [showFournisseurs, setShowFournisseurs] = useState(false)
 
   // Business
   const [ticket,      setTicket]      = useState('')
@@ -312,6 +326,7 @@ export default function Parametres({ user, profile: initProfile, setProfile, onL
       const payload = {
         nom: f.nom, mode: f.mode || 'tel',
         tel: f.tel || null, email: f.email || null,
+        siret: f.siret || null, adresse: f.adresse || null,
         jours: f.jours || [], heure_limite: f.heure_limite || '09:00',
         user_id: user.id, etablissement_id: eid || user.id,
       }
@@ -423,6 +438,90 @@ export default function Parametres({ user, profile: initProfile, setProfile, onL
     )
   }
 
+  const newFour = () => setFourModal({ _uid: Date.now(), id: null, nom: '', mode: 'tel', tel: '', email: '', siret: '', adresse: '', jours: [], heure_limite: '09:00' })
+
+  // ── Vue liste fournisseurs ─────────────────────────────────────────────────
+  if (showFournisseurs) {
+    return (
+      <div style={{ padding:'16px 16px 80px', maxWidth:640, margin:'0 auto', fontFamily:"'Plus Jakarta Sans','DM Sans',sans-serif" }}>
+
+        {/* En-tête */}
+        <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:20 }}>
+          <button
+            onClick={() => setShowFournisseurs(false)}
+            style={{ width:36, height:36, borderRadius:10, border:'1.5px solid #E2E8F0', background:'#F8FAFC', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', fontSize:16, color:'#475569', flexShrink:0, fontFamily:'inherit' }}
+          >←</button>
+          <span style={{ fontSize:18, fontWeight:800, color:'#0F172A', flex:1 }}>Fournisseurs</span>
+          <button
+            onClick={newFour}
+            style={{ width:36, height:36, borderRadius:10, border:'none', background:'#2563EB', color:'#fff', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', fontSize:20, fontWeight:700, flexShrink:0 }}
+          >+</button>
+        </div>
+
+        {/* Liste vide */}
+        {fours.length === 0 && (
+          <div style={{ textAlign:'center', padding:'60px 20px' }}>
+            <div style={{ fontSize:40, marginBottom:12 }}>🚚</div>
+            <div style={{ fontSize:14, fontWeight:600, color:'#0F172A', marginBottom:6 }}>Aucun fournisseur enregistré</div>
+            <div style={{ fontSize:13, color:'#94A3B8', marginBottom:20 }}>Ajoutez vos fournisseurs pour les retrouver ici.</div>
+            <button onClick={newFour} style={{ ...S.btnPrimary }}>+ Ajouter un fournisseur</button>
+          </div>
+        )}
+
+        {/* Cards fournisseurs */}
+        {fours.length > 0 && (
+          <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+            {fours.map(f => (
+              <div key={f._uid} style={{ ...S.card, marginBottom:0 }}>
+                <div style={{ fontSize:16, fontWeight:700, color:'#0F172A', marginBottom:10 }}>{f.nom || '—'}</div>
+                {f.tel && (
+                  <div style={{ display:'flex', alignItems:'center', gap:8, fontSize:13.5, color:'#475569', marginBottom:5 }}>
+                    <span style={{ fontSize:15 }}>📞</span> {f.tel}
+                  </div>
+                )}
+                {f.email && (
+                  <div style={{ display:'flex', alignItems:'center', gap:8, fontSize:13.5, color:'#475569', marginBottom:5 }}>
+                    <span style={{ fontSize:15 }}>✉️</span> {f.email}
+                  </div>
+                )}
+                {f.adresse && (
+                  <div style={{ display:'flex', alignItems:'center', gap:8, fontSize:13, color:'#64748B', marginBottom:5 }}>
+                    <span style={{ fontSize:14 }}>📍</span> {f.adresse}
+                  </div>
+                )}
+                {f.siret && (
+                  <div style={{ fontSize:11.5, color:'#94A3B8', marginTop:4 }}>SIRET : {f.siret}</div>
+                )}
+                <div style={{ display:'flex', gap:8, justifyContent:'flex-end', marginTop:12, paddingTop:10, borderTop:'1px solid #F1F5F9' }}>
+                  <button
+                    onClick={() => setFourModal(f)}
+                    style={{ ...S.btnGhost, padding:'7px 16px', fontSize:13 }}
+                  >✏️ Modifier</button>
+                  <button
+                    onClick={() => confirmDeleteFour(f)}
+                    style={{ ...S.btnGhost, padding:'7px 16px', fontSize:13, color:'#EF4444', borderColor:'#FECACA' }}
+                  >🗑️ Supprimer</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {fourModal && (
+          <FourModal
+            f={fourModal}
+            onSave={saveFour}
+            onDelete={confirmDeleteFour}
+            onClose={() => setFourModal(null)}
+            saving={isSaving(`four_${fourModal._uid}`)}
+          />
+        )}
+        {confirm && <ConfirmModal message={confirm.msg} confirmLabel={confirm.confirmLabel} onConfirm={confirm.onConfirm} onCancel={() => setConfirm(null)} />}
+        {toast   && <Toast msg={toast.msg} type={toast.type} />}
+      </div>
+    )
+  }
+
   const avatarLetter = (displayName || initProfile?.name || '?')[0]?.toUpperCase() || '?'
   const planLabel    = PLAN_LABELS[etab.abonnement || 'starter'] || 'Starter'
 
@@ -528,39 +627,20 @@ export default function Parametres({ user, profile: initProfile, setProfile, onL
       </div>
 
       {/* ── 4. Fournisseurs ────────────────────────────────────────────────── */}
-      <div style={S.card}>
-        <div style={S.title}>🚚 Fournisseurs</div>
-        {fours.length === 0 && (
-          <div style={{ fontSize:13, color:'#94A3B8', marginBottom:12 }}>Aucun fournisseur configuré.</div>
-        )}
-        {fours.length > 0 && (
-          <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:12 }}>
-            {fours.map(f => (
-              <button
-                key={f._uid}
-                onClick={() => setFourModal(f)}
-                style={{ display:'flex', alignItems:'center', gap:12, padding:'12px 14px', borderRadius:12, border:'1px solid #E2E8F0', background:'#F8FAFC', cursor:'pointer', textAlign:'left', fontFamily:'inherit', width:'100%' }}
-              >
-                <div style={{ width:40, height:40, borderRadius:'50%', background:'#EFF6FF', color:'#2563EB', display:'flex', alignItems:'center', justifyContent:'center', fontSize:17, fontWeight:700, flexShrink:0 }}>
-                  {(f.nom || '?')[0].toUpperCase()}
-                </div>
-                <div style={{ flex:1, minWidth:0 }}>
-                  <div style={{ fontSize:14, fontWeight:600, color:'#0F172A', marginBottom:2 }}>{f.nom || '—'}</div>
-                  <div style={{ fontSize:12, color:'#94A3B8', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
-                    {[f.tel, f.email].filter(Boolean).join(' · ') || 'Aucun contact'}
-                  </div>
-                </div>
-                <span style={{ fontSize:16, color:'#CBD5E1', flexShrink:0 }}>›</span>
-              </button>
-            ))}
+      <div
+        style={{ ...S.card, cursor:'pointer', display:'flex', alignItems:'center', gap:14 }}
+        onClick={() => setShowFournisseurs(true)}
+      >
+        <div style={{ width:42, height:42, borderRadius:12, background:'#EFF6FF', display:'flex', alignItems:'center', justifyContent:'center', fontSize:22, flexShrink:0 }}>🚚</div>
+        <div style={{ flex:1 }}>
+          <div style={{ fontSize:15, fontWeight:700, color:'#0F172A' }}>Fournisseurs</div>
+          <div style={{ fontSize:12.5, color:'#94A3B8', marginTop:2 }}>
+            {fours.length > 0
+              ? `${fours.length} fournisseur${fours.length > 1 ? 's' : ''} enregistré${fours.length > 1 ? 's' : ''}`
+              : 'Aucun fournisseur configuré'}
           </div>
-        )}
-        <button
-          onClick={() => setFourModal({ _uid: Date.now(), id: null, nom: '', mode: 'tel', tel: '', email: '', jours: [], heure_limite: '09:00' })}
-          style={{ ...S.btnGhost, fontSize:13, width:'100%' }}
-        >
-          + Ajouter un fournisseur
-        </button>
+        </div>
+        <span style={{ fontSize:18, color:'#CBD5E1', flexShrink:0 }}>›</span>
       </div>
 
       {/* ── 5. Business ────────────────────────────────────────────────────── */}

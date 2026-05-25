@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { upsertStock, deleteStockItem, fetchLabResults } from '../lib/supabase'
 import { CAT_ICON, CAT_COLOR, CAT_BG, UNITES, dlcStatus, dlcDays, dlcColor, uid, fdate } from '../constants'
 
@@ -36,16 +36,27 @@ function DlcPill({ dlc }) {
 
 // ── Product Card ──────────────────────────────────────────────────────────────
 
-function ProductCard({ item, onEdit, onDelete, mode, onSortie, certified }) {
+function ProductCard({ item, onEdit, onDelete, mode, onSortie, certified, selMode = false, selected = false, onToggle }) {
   const cat  = item.cat || 'autre'
   const crit = critique(item)
   const st   = dlcStatus(item.dlc)
 
   return (
     <div
-      style={{ ...S.productCard, borderLeft:`3px solid ${CAT_COLOR[cat]||'#94A3B8'}`, opacity: st==='expired' ? .65 : 1 }}
-      onClick={mode === 'sortie' ? () => onSortie(item) : undefined}
+      style={{
+        ...S.productCard,
+        borderLeft: selMode ? undefined : `3px solid ${CAT_COLOR[cat]||'#94A3B8'}`,
+        ...(selMode && selected && { border: '2px solid #2563EB', background: '#EFF6FF' }),
+        opacity: st === 'expired' ? .65 : 1,
+        cursor: selMode ? 'pointer' : undefined,
+      }}
+      onClick={selMode ? () => onToggle(item.id) : (mode === 'sortie' ? () => onSortie(item) : undefined)}
     >
+      {selMode && (
+        <div style={{ width:22, height:22, borderRadius:6, border: selected ? 'none' : '2px solid #CBD5E1', background: selected ? '#2563EB' : '#fff', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, color:'#fff', fontSize:13, fontWeight:700 }}>
+          {selected ? '✓' : ''}
+        </div>
+      )}
       <div style={{ ...S.catIcon, background: CAT_BG[cat]||'#F8FAFC' }}>
         {CAT_ICON[cat]||'📦'}
       </div>
@@ -79,7 +90,7 @@ function ProductCard({ item, onEdit, onDelete, mode, onSortie, certified }) {
         <span style={S.qtyU}>{item.u}</span>
       </div>
 
-      {mode === 'liste' && (
+      {mode === 'liste' && !selMode && (
         <div style={S.cardActions}>
           <button style={S.actionBtn} onClick={() => onEdit(item)} title="Modifier">✏️</button>
           <button style={{ ...S.actionBtn, color:'#EF4444' }} onClick={() => onDelete(item.id)} title="Supprimer">🗑️</button>
@@ -337,6 +348,16 @@ export default function Stock({ stock = [], setStock, fournisseurs = [], user, p
   const [confirmId,      setConfirmId]      = useState(null)
   const [saving,         setSaving]         = useState(false)
   const [certifiedNames, setCertifiedNames] = useState(new Set())
+  const [selMode,        setSelMode]        = useState(false)
+  const [selectedIds,    setSelectedIds]    = useState(new Set())
+  const [confirmMulti,   setConfirmMulti]   = useState(false)
+  const [addMenu,        setAddMenu]        = useState(false)
+  const [analyzing,      setAnalyzing]      = useState(false)
+  const [photoProducts,  setPhotoProducts]  = useState(null)
+  const [photoError,     setPhotoError]     = useState(null)
+
+  const cameraRef  = useRef(null)
+  const galleryRef = useRef(null)
 
   useEffect(() => {
     fetchLabResults(user.id).then(({ data }) => {
@@ -401,6 +422,87 @@ export default function Stock({ stock = [], setStock, fournisseurs = [], user, p
     setSortieItem(null)
   }
 
+  function toggleSelect(id) {
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
+
+  async function handleDeleteMulti() {
+    const ids = [...selectedIds]
+    await Promise.all(ids.map(id => deleteStockItem(id)))
+    setStock(s => s.filter(i => !selectedIds.has(i.id)))
+    setSelectedIds(new Set())
+    setSelMode(false)
+    setConfirmMulti(false)
+  }
+
+  const updatePhotoProduct = (id, field, val) =>
+    setPhotoProducts(prev => prev.map(p => p._id === id ? { ...p, [field]: val } : p))
+
+  async function handleFileSelect(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    e.target.value = ''
+    setAnalyzing(true)
+    setPhotoError(null)
+    try {
+      const base64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload  = () => resolve(reader.result.split(',')[1])
+        reader.onerror = reject
+        reader.readAsDataURL(file)
+      })
+      const res  = await fetch('/api/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image: base64, userId: user.id, etablissementId: profile?.etablissement_id }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Erreur analyse')
+      const produits = (data.produits || []).map((p, i) => ({ ...p, _id: i }))
+      if (produits.length === 0) {
+        setPhotoError('Aucun produit détecté. Réessayez avec une image plus nette.')
+      } else {
+        setPhotoProducts(produits)
+      }
+    } catch (err) {
+      setPhotoError(err.message || "Erreur lors de l'analyse")
+    } finally {
+      setAnalyzing(false)
+    }
+  }
+
+  async function handlePhotoInsert() {
+    setSaving(true)
+    const items = photoProducts
+      .filter(p => (p.nom || '').trim())
+      .map(p => ({
+        id:               crypto.randomUUID(),
+        nom:              p.nom.trim(),
+        q:                Number(p.q) || 0,
+        u:                p.u || 'kg',
+        px:               p.px != null && p.px !== '' ? Number(p.px) : null,
+        seuil_min:        null,
+        cat:              p.cat || 'autre',
+        four:             '',
+        dlc:              p.dlc || '',
+        lot:              p.lot || '',
+        user_id:          user.id,
+        etablissement_id: profile?.etablissement_id,
+        date_reception:   fdate(),
+        updated_at:       new Date().toISOString(),
+      }))
+    const { error } = await upsertStock(items)
+    if (!error) {
+      setStock(s => [...items, ...s])
+      setPhotoProducts(null)
+    }
+    setSaving(false)
+  }
+
   async function handleFlashUpdate(item, newQ) {
     const updated = { ...item, q: newQ, user_id: user.id, etablissement_id: profile?.etablissement_id }
     const { error } = await upsertStock([updated])
@@ -421,14 +523,25 @@ export default function Stock({ stock = [], setStock, fournisseurs = [], user, p
           <h1 style={S.title}>Stock</h1>
           <div style={S.subtitle}>{stock.length} produit{stock.length !== 1 ? 's' : ''} · {nCommander > 0 && <span style={{ color:'#F59E0B' }}>{nCommander} à commander</span>}</div>
         </div>
-        <button style={S.btnAdd} onClick={() => setEditItem({})}>+ Ajouter</button>
+        <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+          {!selMode ? (
+            <>
+              {mode === 'liste' && (
+                <button style={S.btnSel} onClick={() => { setSelMode(true); setSelectedIds(new Set()) }}>Sélectionner</button>
+              )}
+              <button style={S.btnAdd} onClick={() => setAddMenu(true)}>+ Ajouter</button>
+            </>
+          ) : (
+            <button style={S.btnSel} onClick={() => { setSelMode(false); setSelectedIds(new Set()) }}>Annuler</button>
+          )}
+        </div>
       </div>
 
       {/* Mode tabs */}
       <div style={S.modeTabs}>
         {MODES.map(m => (
           <button key={m.k} style={{ ...S.modeTab, ...(mode === m.k ? S.modeTabActive : {}) }}
-            onClick={() => setMode(m.k)}>{m.l}</button>
+            onClick={() => { setMode(m.k); setSelMode(false); setSelectedIds(new Set()) }}>{m.l}</button>
         ))}
       </div>
 
@@ -478,6 +591,9 @@ export default function Stock({ stock = [], setStock, fournisseurs = [], user, p
                   onDelete={id => setConfirmId(id)}
                   onSortie={setSortieItem}
                   certified={certifiedNames.has(item.nom?.trim().toLowerCase())}
+                  selMode={selMode}
+                  selected={selectedIds.has(item.id)}
+                  onToggle={toggleSelect}
                 />
               ))}
             </div>
@@ -527,6 +643,174 @@ export default function Stock({ stock = [], setStock, fournisseurs = [], user, p
       {editItem !== null && (
         <EditModal item={editItem} fournisseurs={fournisseurs}
           onSave={handleSave} onClose={() => setEditItem(null)} saving={saving} />
+      )}
+
+      {/* ── Confirm multi-delete ── */}
+      {confirmMulti && (
+        <div style={S.backdrop} onClick={() => setConfirmMulti(false)}>
+          <div style={{ ...S.modal, maxWidth:340 }} onClick={e => e.stopPropagation()}>
+            <div style={{ padding:'28px 24px', textAlign:'center' }}>
+              <div style={{ fontSize:36, marginBottom:12 }}>🗑️</div>
+              <div style={{ fontSize:15, fontWeight:600, color:'#0F172A', marginBottom:6 }}>
+                Supprimer {selectedIds.size} produit{selectedIds.size > 1 ? 's' : ''} ?
+              </div>
+              <div style={{ fontSize:13, color:'#64748B', marginBottom:20 }}>Cette action est irréversible.</div>
+              <div style={{ display:'flex', gap:10 }}>
+                <button style={S.btnSecondary} onClick={() => setConfirmMulti(false)}>Annuler</button>
+                <button style={{ ...S.btnDanger, flex:1 }} onClick={handleDeleteMulti}>Supprimer</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Selection bar ── */}
+      {selMode && selectedIds.size > 0 && (
+        <div style={S.selBar}>
+          <span style={{ fontSize:14, fontWeight:600, color:'#0F172A' }}>
+            {selectedIds.size} sélectionné{selectedIds.size > 1 ? 's' : ''}
+          </span>
+          <button style={S.btnDanger} onClick={() => setConfirmMulti(true)}>
+            Supprimer
+          </button>
+        </div>
+      )}
+
+      {/* ── Hidden file inputs ── */}
+      <input ref={cameraRef}  type="file" accept="image/*" capture="environment" style={{ display:'none' }} onChange={handleFileSelect} />
+      <input ref={galleryRef} type="file" accept="image/*"                        style={{ display:'none' }} onChange={handleFileSelect} />
+
+      {/* ── Analyzing overlay ── */}
+      {analyzing && (
+        <div style={{ ...S.backdrop, alignItems:'center', justifyContent:'center' }}>
+          <div style={{ background:'#fff', borderRadius:20, padding:'32px 40px', textAlign:'center', display:'flex', flexDirection:'column', alignItems:'center', gap:14, boxShadow:'0 8px 40px rgba(0,0,0,.15)' }}>
+            <div style={{ fontSize:40 }}>📸</div>
+            <div style={{ fontSize:15, fontWeight:700, color:'#0F172A', fontFamily:F }}>Analyse en cours…</div>
+            <div style={{ fontSize:12.5, color:'#94A3B8', fontFamily:F }}>Aria identifie les produits</div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Photo error ── */}
+      {photoError && (
+        <div style={S.backdrop} onClick={() => setPhotoError(null)}>
+          <div style={{ ...S.modal, maxWidth:340 }} onClick={e => e.stopPropagation()}>
+            <div style={{ padding:'28px 24px', textAlign:'center' }}>
+              <div style={{ fontSize:36, marginBottom:12 }}>⚠️</div>
+              <div style={{ fontSize:15, fontWeight:600, color:'#0F172A', marginBottom:6 }}>Analyse impossible</div>
+              <div style={{ fontSize:13, color:'#64748B', marginBottom:20 }}>{photoError}</div>
+              <button style={{ ...S.btnPrimary, width:'100%' }} onClick={() => setPhotoError(null)}>OK</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Add menu ── */}
+      {addMenu && (
+        <div style={S.backdrop} onClick={() => setAddMenu(false)}>
+          <div style={{ ...S.modal, maxWidth:520 }} onClick={e => e.stopPropagation()}>
+            <div style={S.modalHeader}>
+              <span style={S.modalTitle}>Ajouter un produit</span>
+              <button style={S.closeBtn} onClick={() => setAddMenu(false)}>✕</button>
+            </div>
+            <div style={{ padding:'16px 20px 24px', display:'flex', flexDirection:'column', gap:10 }}>
+              <button style={S.addOptionBtn} onClick={() => { setAddMenu(false); setEditItem({}) }}>
+                <span style={{ fontSize:24 }}>✏️</span>
+                <div style={{ textAlign:'left' }}>
+                  <div style={{ fontWeight:600, fontSize:14, color:'#0F172A', fontFamily:F }}>Saisie manuelle</div>
+                  <div style={{ fontSize:12, color:'#94A3B8', marginTop:2, fontFamily:F }}>Remplir le formulaire manuellement</div>
+                </div>
+              </button>
+              <button style={S.addOptionBtn} onClick={() => { setAddMenu(false); cameraRef.current?.click() }}>
+                <span style={{ fontSize:24 }}>📷</span>
+                <div style={{ textAlign:'left' }}>
+                  <div style={{ fontWeight:600, fontSize:14, color:'#0F172A', fontFamily:F }}>Prendre une photo</div>
+                  <div style={{ fontSize:12, color:'#94A3B8', marginTop:2, fontFamily:F }}>Photo d'un produit ou d'un document</div>
+                </div>
+              </button>
+              <button style={S.addOptionBtn} onClick={() => { setAddMenu(false); galleryRef.current?.click() }}>
+                <span style={{ fontSize:24 }}>🖼️</span>
+                <div style={{ textAlign:'left' }}>
+                  <div style={{ fontWeight:600, fontSize:14, color:'#0F172A', fontFamily:F }}>Choisir dans la galerie</div>
+                  <div style={{ fontSize:12, color:'#94A3B8', marginTop:2, fontFamily:F }}>Importer une photo existante</div>
+                </div>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Photo products confirm ── */}
+      {photoProducts && (
+        <div style={S.backdrop} onClick={() => setPhotoProducts(null)}>
+          <div style={{ ...S.modal, maxWidth:520 }} onClick={e => e.stopPropagation()}>
+            <div style={S.modalHeader}>
+              <div>
+                <div style={S.modalTitle}>{photoProducts.length} produit{photoProducts.length > 1 ? 's' : ''} détecté{photoProducts.length > 1 ? 's' : ''}</div>
+                <div style={{ fontSize:12, color:'#94A3B8', marginTop:2 }}>Vérifiez et modifiez avant d'ajouter au stock</div>
+              </div>
+              <button style={S.closeBtn} onClick={() => setPhotoProducts(null)}>✕</button>
+            </div>
+            <div style={{ ...S.modalBody, gap:12 }}>
+              {photoProducts.map(p => (
+                <div key={p._id} style={{ border:'1.5px solid #E2E8F0', borderRadius:12, padding:'12px 14px', display:'flex', flexDirection:'column', gap:8, position:'relative' }}>
+                  <button
+                    style={{ position:'absolute', top:8, right:8, width:24, height:24, border:'none', background:'#FEF2F2', borderRadius:6, color:'#EF4444', fontSize:12, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', fontFamily:F }}
+                    onClick={() => setPhotoProducts(prev => prev.filter(x => x._id !== p._id))}
+                  >✕</button>
+                  <div style={{ paddingRight:28 }}>
+                    <div style={S.fieldLabel}>Nom</div>
+                    <input style={S.input} value={p.nom || ''} onChange={e => updatePhotoProduct(p._id, 'nom', e.target.value)} />
+                  </div>
+                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
+                    <div>
+                      <div style={S.fieldLabel}>Quantité</div>
+                      <input style={S.input} type="number" min="0" step="0.1" value={p.q ?? ''} onChange={e => updatePhotoProduct(p._id, 'q', e.target.value)} />
+                    </div>
+                    <div>
+                      <div style={S.fieldLabel}>Unité</div>
+                      <select style={S.input} value={p.u || 'kg'} onChange={e => updatePhotoProduct(p._id, 'u', e.target.value)}>
+                        {UNITES.map(u => <option key={u} value={u}>{u}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
+                    <div>
+                      <div style={S.fieldLabel}>DLC (JJ/MM/AAAA)</div>
+                      <input style={S.input} value={p.dlc || ''} onChange={e => updatePhotoProduct(p._id, 'dlc', e.target.value)} placeholder="JJ/MM/AAAA" />
+                    </div>
+                    <div>
+                      <div style={S.fieldLabel}>Prix (€)</div>
+                      <input style={S.input} type="number" min="0" step="0.01" value={p.px ?? ''} onChange={e => updatePhotoProduct(p._id, 'px', e.target.value)} placeholder="0.00" />
+                    </div>
+                  </div>
+                  <div>
+                    <div style={S.fieldLabel}>Catégorie</div>
+                    <div style={{ display:'flex', gap:5, flexWrap:'wrap', marginTop:4 }}>
+                      {CATS.map(c => (
+                        <button key={c} type="button"
+                          style={{ ...S.catBtn, minWidth:32, flex:'none', padding:'7px', ...(p.cat === c ? { borderColor: CAT_COLOR[c], background: CAT_BG[c] } : {}) }}
+                          onClick={() => updatePhotoProduct(p._id, 'cat', c)}>
+                          <span style={{ fontSize:18 }}>{CAT_ICON[c]}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div style={S.modalFooter}>
+              <button style={S.btnSecondary} onClick={() => setPhotoProducts(null)}>Annuler</button>
+              <button
+                style={{ ...S.btnPrimary, opacity: saving || photoProducts.filter(p => (p.nom||'').trim()).length === 0 ? .5 : 1 }}
+                onClick={handlePhotoInsert}
+                disabled={saving || photoProducts.filter(p => (p.nom||'').trim()).length === 0}
+              >
+                {saving ? 'Ajout…' : `Ajouter ${photoProducts.filter(p => (p.nom||'').trim()).length} produit${photoProducts.filter(p => (p.nom||'').trim()).length > 1 ? 's' : ''}`}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
@@ -623,4 +907,7 @@ const S = {
   btnPrimary:   { padding:'10px 22px', background:'#2563EB', color:'#fff', border:'none', borderRadius:10, fontSize:13.5, fontWeight:600, cursor:'pointer', fontFamily:F },
   btnSecondary: { padding:'10px 18px', background:'#F8FAFC', color:'#475569', border:'1.5px solid #E2E8F0', borderRadius:10, fontSize:13.5, fontWeight:500, cursor:'pointer', fontFamily:F },
   btnDanger:    { padding:'10px 18px', background:'#EF4444', color:'#fff', border:'none', borderRadius:10, fontSize:13.5, fontWeight:600, cursor:'pointer', fontFamily:F },
+  btnSel:       { padding:'9px 16px', background:'#F1F5F9', color:'#0F172A', border:'none', borderRadius:12, fontSize:13.5, fontWeight:600, cursor:'pointer', fontFamily:F, flexShrink:0 },
+  selBar:       { position:'fixed', bottom:64, left:0, right:0, zIndex:200, background:'#fff', borderTop:'1.5px solid #E2E8F0', padding:'12px 20px', display:'flex', alignItems:'center', justifyContent:'space-between', boxShadow:'0 -4px 16px rgba(0,0,0,.08)', fontFamily:F },
+  addOptionBtn: { display:'flex', alignItems:'center', gap:14, padding:'14px 16px', border:'1.5px solid #E2E8F0', borderRadius:14, background:'#F8FAFC', cursor:'pointer', fontFamily:F, width:'100%', transition:'border-color .15s, background .15s' },
 }
