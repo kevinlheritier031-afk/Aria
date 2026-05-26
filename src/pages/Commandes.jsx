@@ -1,14 +1,9 @@
 import { useState, useMemo } from 'react'
 import { upsertFournisseur, deleteFournisseur, insertPrix } from '../lib/supabase'
-import { MODES_COMMANDE, JOURS, uid } from '../constants'
+import { MODES_COMMANDE, JOURS, uid, critique } from '../constants'
 
 const F  = "'Plus Jakarta Sans','Inter',sans-serif"
 const FM = "'DM Mono','JetBrains Mono',monospace"
-
-const critique = (item) => {
-  const s = parseFloat(item.seuil_min)
-  return isNaN(s) ? item.q <= 2 : item.q <= s
-}
 
 const suggestQty = (item) => {
   const seuil = parseFloat(item.seuil_min)

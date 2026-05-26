@@ -135,7 +135,7 @@ export const initials = (name) => name.trim().split(/\s+/).map(w=>w[0].toUpperCa
 export function dlcDays(dlc){
   if(!dlc)return null;
   const[d,m,y]=dlc.split("/");
-  const dt=new Date(`${y}-${m}-${d}`);
+  const dt=new Date(parseInt(y),parseInt(m)-1,parseInt(d));
   if(isNaN(dt))return null;
   return Math.ceil((dt-new Date())/86400000);
 }
@@ -165,6 +165,11 @@ export function dlcLabel(s,dlc){
 export function isCritique(item){
   if(item.seuil_min==null||item.seuil_min==="")return parseFloat(item.q)<=2;
   return parseFloat(item.q)<=parseFloat(item.seuil_min);
+}
+
+export const critique = (item) => {
+  const s = parseFloat(item.seuil_min)
+  return isNaN(s) ? item.q <= 2 : item.q <= s
 }
 
 export function checkPwd(pwd){

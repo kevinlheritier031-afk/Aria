@@ -69,7 +69,6 @@ export async function scheduleHaccpNotifications(etablissementId, settings) {
   if (Notification.permission !== 'granted') return
   if (settings?.haccp_alertes_sonores === false) return
 
-  // Retourne une fonction cancel pour nettoyer les timers
   const timers = []
 
   const notify = (title, body, delayMs) => {
@@ -78,6 +77,43 @@ export async function scheduleHaccpNotifications(etablissementId, settings) {
       new Notification(title, { body, icon: '/favicon.ico', tag: `haccp-${title}-${Date.now()}` })
     }, delayMs)
     timers.push(t)
+  }
+
+  // ── Froid : relevé toutes les 4 h (légal), rappel 30 min avant expiration
+  // TODO: idéalement, calculer le délai depuis le dernier relevé en DB.
+  // Pour l'instant on programme un rappel à heure fixe (8h, 12h, 16h, 20h).
+  const now = new Date()
+  const FROID_HEURES = [8, 12, 16, 20]
+  if (settings?.haccp_froid !== false) {
+    for (const heure of FROID_HEURES) {
+      const cible = new Date(now)
+      cible.setHours(heure - 1, 30, 0, 0) // rappel 30 min avant
+      const delayMs = cible - now
+      if (delayMs > 0) {
+        notify(
+          '🌡️ Relevé froid dans 30 min',
+          `Pensez à effectuer votre relevé de température froid avant ${heure}h00.`,
+          delayMs
+        )
+      }
+    }
+  }
+
+  // ── Chaud : rappel avant le service du midi (11h30) et du soir (18h30)
+  if (settings?.haccp_chaud !== false) {
+    const services = [{ h: 11, m: 30 }, { h: 18, m: 30 }]
+    for (const { h, m } of services) {
+      const cible = new Date(now)
+      cible.setHours(h, m, 0, 0)
+      const delayMs = cible - now
+      if (delayMs > 0) {
+        notify(
+          '🔴 Relevé chaud à effectuer',
+          `Avant le service, enregistrez la température de vos préparations chaudes.`,
+          delayMs
+        )
+      }
+    }
   }
 
   return () => timers.forEach(clearTimeout)

@@ -1,14 +1,9 @@
 import { useState, useEffect } from 'react'
-import { dlcStatus } from '../constants'
+import { dlcStatus, critique } from '../constants'
 import { calculateConformiteScore } from '../lib/conformiteScore'
 
 const F  = "'Plus Jakarta Sans','Inter',sans-serif"
 const FM = "'DM Mono','JetBrains Mono',monospace"
-
-const critique = (item) => {
-  const s = parseFloat(item.seuil_min)
-  return isNaN(s) ? item.q <= 2 : item.q <= s
-}
 
 const AVATAR_COLORS = ['#2563EB','#10B981','#F59E0B','#8B5CF6','#EC4899','#0EA5E9','#F97316']
 function fourColor(nom) {
@@ -19,19 +14,16 @@ function fourColor(nom) {
 
 // ── Typing dots ────────────────────────────────────────────────────────────────
 
+const DOTS_STYLES = [0, 0.2, 0.4].map(delay => ({
+  width:8, height:8, borderRadius:'50%',
+  background:'#2563EB',
+  animation:`aria-dot 1.2s ease-in-out ${delay}s infinite`,
+}))
+
 function TypingDots() {
   return (
-    <div style={{ display:'flex', gap:5, alignItems:'center', height:22 }}>
-      {[0,1,2].map(i => (
-        <div
-          key={i}
-          style={{
-            width:8, height:8, borderRadius:'50%',
-            background:'#2563EB',
-            animation:`aria-dot 1.2s ease-in-out ${i * 0.2}s infinite`,
-          }}
-        />
-      ))}
+    <div style={S.dotsWrap}>
+      {DOTS_STYLES.map((style, i) => <div key={i} style={style} />)}
     </div>
   )
 }
@@ -65,7 +57,9 @@ export default function Dashboard({ user, stock = [], scanLog = [], prixHist = [
   useEffect(() => {
     const eid = profile?.etablissement_id
     if (!eid) return
-    calculateConformiteScore(eid).then(setConformite).catch(() => {})
+    let cancelled = false
+    calculateConformiteScore(eid).then(s => { if (!cancelled) setConformite(s) }).catch(() => {})
+    return () => { cancelled = true }
   }, [profile?.etablissement_id])
 
   // Aria message du jour (once per session)
@@ -187,11 +181,8 @@ export default function Dashboard({ user, stock = [], scanLog = [], prixHist = [
 
           {/* HACCP Conformité */}
           {conformite && (
-            <button
-              onClick={() => setPage?.('haccp')}
-              style={{ display:'block', width:'100%', marginTop:12, padding:'10px 12px', borderRadius:12, border:'1px solid #E2E8F0', background:'#F8FAFC', cursor:'pointer', fontFamily:F, textAlign:'left' }}
-            >
-              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:6 }}>
+            <button onClick={() => setPage?.('haccp')} style={S.haccpBtn}>
+              <div style={S.haccpRow}>
                 <span style={{ fontSize:12.5, fontWeight:600, color:'#475569' }}>🌡️ Conformité HACCP</span>
                 <span style={{
                   fontSize:12, fontWeight:700,
@@ -202,7 +193,7 @@ export default function Dashboard({ user, stock = [], scanLog = [], prixHist = [
                   {conformite.score}% · {conformite.niveau}
                 </span>
               </div>
-              <div style={{ height:6, background:'#E2E8F0', borderRadius:4, overflow:'hidden' }}>
+              <div style={S.haccpBarTrack}>
                 <div style={{
                   height:'100%',
                   width:`${conformite.score}%`,
@@ -277,6 +268,12 @@ export default function Dashboard({ user, stock = [], scanLog = [], prixHist = [
 // ── Styles ────────────────────────────────────────────────────────────────────
 
 const S = {
+  dotsWrap: { display:'flex', gap:5, alignItems:'center', height:22 },
+
+  haccpBtn:      { display:'block', width:'100%', marginTop:12, padding:'10px 12px', borderRadius:12, border:'1px solid #E2E8F0', background:'#F8FAFC', cursor:'pointer', fontFamily:F, textAlign:'left' },
+  haccpRow:      { display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:6 },
+  haccpBarTrack: { height:6, background:'#E2E8F0', borderRadius:4, overflow:'hidden' },
+
   page: {
     display:       'flex',
     flexDirection: 'column',

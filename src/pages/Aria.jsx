@@ -167,7 +167,7 @@ export default function Aria({ stock = [], fournisseurs = [], scanLog = [], user
     const critDlcCount = stock.filter(i => {
       if (!i.dlc) return false
       const [d, m, y] = i.dlc.split('/')
-      return Math.ceil((new Date(`${y}-${m}-${d}`) - new Date()) / 86400000) <= 7
+      return Math.ceil((new Date(parseInt(y),parseInt(m)-1,parseInt(d)) - new Date()) / 86400000) <= 7
     }).length
     const sousSeuil = stock.filter(i => {
       const s = parseFloat(i.seuil_min)
@@ -179,7 +179,7 @@ export default function Aria({ stock = [], fournisseurs = [], scanLog = [], user
       return couverts.filter(c => {
         if (!c.date) return false
         const [d, m, y] = c.date.split('/')
-        return y && new Date(`${y}-${m}-${d}`) >= weekAgo
+        return y && new Date(parseInt(y),parseInt(m)-1,parseInt(d)) >= weekAgo
       }).reduce((s, c) => s + (c.nb_couverts || 0), 0)
     })()
 
@@ -309,7 +309,7 @@ export default function Aria({ stock = [], fournisseurs = [], scanLog = [], user
   const dlcCount = stock.filter(i => {
     if (!i.dlc) return false
     const [d, m, y] = i.dlc.split('/')
-    return Math.ceil((new Date(`${y}-${m}-${d}`) - new Date()) / 86400000) <= 3
+    return Math.ceil((new Date(parseInt(y),parseInt(m)-1,parseInt(d)) - new Date()) / 86400000) <= 3
   }).length
   const seuilCount = stock.filter(i => {
     const s = parseFloat(i.seuil_min)

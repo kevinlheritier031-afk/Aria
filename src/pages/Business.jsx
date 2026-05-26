@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
-import { fetchCouverts, insertCouvert, fetchRecettes } from '../lib/supabase'
-import { uid, fdate } from '../constants'
+import { fetchCouverts } from '../lib/supabase'
 import BarChart from '../components/shared/BarChart'
 
 const F = "'Plus Jakarta Sans','Inter',sans-serif"
@@ -134,9 +133,6 @@ function MargeGauge({ reelle, cible }) {
 function TabCouverts({ user }) {
   const [couverts,  setCouverts]  = useState([])
   const [loading,   setLoading]   = useState(true)
-  const [saving,    setSaving]    = useState(false)
-  const [formErr,   setFormErr]   = useState('')
-  const [form,      setForm]      = useState({ date: fdate(), service:'midi', nb:'', note:'' })
 
   useEffect(() => {
     if (!user?.id) { setLoading(false); return }
@@ -145,20 +141,6 @@ function TabCouverts({ user }) {
       setLoading(false)
     })
   }, [user])
-
-  const f = (k, v) => setForm(p => ({ ...p, [k]: v }))
-
-  async function handleSave() {
-    setFormErr('')
-    const nb = parseInt(form.nb)
-    if (!nb || nb <= 0) { setFormErr('Veuillez saisir un nombre de couverts valide'); return }
-    setSaving(true)
-    const rec = { id: uid(), user_id: user.id, date: form.date, service: form.service, nb_couverts: nb, observations: form.note.trim() || null, created_at: new Date().toISOString() }
-    await insertCouvert(rec)
-    setCouverts(c => [rec, ...c])
-    setForm(p => ({ ...p, nb:'', note:'' }))
-    setSaving(false)
-  }
 
   // Stats
   const weekStart    = startOfWeek()
@@ -232,39 +214,6 @@ function TabCouverts({ user }) {
         </div>
       )}
 
-      {/* Formulaire */}
-      <div style={S.card}>
-        <div style={S.cardTitle}>Nouveau service</div>
-        <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
-            <div>
-              <label style={{ fontSize:12, fontWeight:600, color:'#475569', marginBottom:4, display:'block' }}>Date</label>
-              <input style={S.input} type="text" placeholder="JJ/MM/AAAA" value={form.date} onChange={e => f('date', e.target.value)} />
-            </div>
-            <div>
-              <label style={{ fontSize:12, fontWeight:600, color:'#475569', marginBottom:4, display:'block' }}>Couverts</label>
-              <input style={{ ...S.input, fontSize:20, fontWeight:800, fontFamily:"'DM Mono',monospace", textAlign:'center' }} type="number" min="1" placeholder="0" value={form.nb} onChange={e => f('nb', e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSave()} />
-            </div>
-          </div>
-          <div>
-            <label style={{ fontSize:12, fontWeight:600, color:'#475569', marginBottom:4, display:'block' }}>Service</label>
-            <ServiceSelector value={form.service} onChange={v => f('service', v)} />
-          </div>
-          <div>
-            <label style={{ fontSize:12, fontWeight:600, color:'#475569', marginBottom:4, display:'block' }}>Observations</label>
-            <input style={S.input} placeholder="Groupe, événement, météo…" value={form.note} onChange={e => f('note', e.target.value)} />
-          </div>
-          {formErr && (
-            <div style={{ padding:'7px 12px', background:'#FEF2F2', border:'1px solid #FECACA', borderRadius:8, fontSize:12.5, color:'#DC2626' }}>
-              {formErr}
-            </div>
-          )}
-          <button style={{ ...S.btn, background:'#2563EB', color:'#fff', opacity: saving ? .7 : 1 }} onClick={handleSave} disabled={saving}>
-            {saving ? 'Enregistrement…' : '+ Enregistrer le service'}
-          </button>
-        </div>
-      </div>
-
       {/* Historique */}
       <div style={S.card}>
         <div style={S.cardTitle}>Historique des services</div>
@@ -300,12 +249,19 @@ function TabMenus({ user }) {
   const [editId,  setEditId]  = useState(null)
   const [saving,  setSaving]  = useState(false)
   const [form,    setForm]    = useState({ nom:'', prix_vente:'' })
+  const [eid,     setEid]     = useState(null)
+  const [saveErr, setSaveErr] = useState('')
 
   useEffect(() => {
     if (!user?.id) { setLoading(false); return }
-    supabase.from('menus').select('*').eq('etablissement_id', user.id)
-      .order('created_at', { ascending: true })
-      .then(({ data }) => { if (data) setMenus(data); setLoading(false) })
+    ;(async () => {
+      const { data: etab } = await supabase.from('etablissements').select('id').eq('owner_id', user.id).single()
+      if (!etab) { setLoading(false); return }
+      setEid(etab.id)
+      const { data } = await supabase.from('menus').select('*').eq('etablissement_id', etab.id).order('created_at', { ascending: true })
+      if (data) setMenus(data)
+      setLoading(false)
+    })()
   }, [user?.id])
 
   const pf = (k, v) => setForm(p => ({ ...p, [k]: v }))
@@ -313,16 +269,20 @@ function TabMenus({ user }) {
   async function saveMenu() {
     const pv = parseFloat(form.prix_vente)
     if (!form.nom.trim() || !pv || pv <= 0) return
+    if (!eid) { setSaveErr('Établissement non initialisé — rechargez la page.'); return }
     setSaving(true)
+    setSaveErr('')
     const payload = { nom: form.nom.trim(), prix_vente: pv }
     if (editId) {
-      const { data } = await supabase.from('menus').update(payload).eq('id', editId).select().single()
+      const { data, error } = await supabase.from('menus').update(payload).eq('id', editId).select().single()
+      if (error) { setSaveErr(error.message); setSaving(false); return }
       if (data) setMenus(p => p.map(m => m.id === editId ? data : m))
       setEditId(null)
     } else {
-      const { data } = await supabase.from('menus')
-        .insert({ ...payload, etablissement_id: user.id, actif: true })
+      const { data, error } = await supabase.from('menus')
+        .insert({ ...payload, etablissement_id: eid, actif: true })
         .select().single()
+      if (error) { setSaveErr(error.message); setSaving(false); return }
       if (data) setMenus(p => [...p, data])
     }
     setForm({ nom:'', prix_vente:'' })
@@ -408,27 +368,73 @@ function TabMenus({ user }) {
             </button>
           )}
         </div>
+        {saveErr && (
+          <div style={{ marginTop:8, padding:'7px 12px', background:'#FEF2F2', border:'1px solid #FECACA', borderRadius:8, fontSize:12.5, color:'#DC2626' }}>
+            {saveErr}
+          </div>
+        )}
       </div>
     </div>
   )
 }
 
-// ── Onglet Marges ──────────────────────────────────────────────────────────────
+// ── Onglet Objectifs ───────────────────────────────────────────────────────────
 
 function TabObjectifs({ user }) {
-  const [margeCible,    setMargeCible_]   = useState(() => { try { return parseFloat(localStorage.getItem('aria_marge_cible') || '70') } catch { return 70 } })
-  const [ticketMoyen,   setTicketMoyen_]  = useState(() => { try { return localStorage.getItem('aria_ticket_moyen') || '' } catch { return '' } })
-  const [rapport,       setRapport]       = useState(null)
-  const [generating,    setGenerating]    = useState(false)
+  const [eid,         setEid]         = useState(null)
+  const [margeCible,  setMargeCible_] = useState(70)
+  const [panierMoyen, setPanierMoyen_] = useState(() => { try { return localStorage.getItem('aria_panier_moyen') || '' } catch { return '' } })
+  const [recettes,    setRecettes]    = useState([])
+  const [menus,       setMenus]       = useState([])
+  const [loading,     setLoading]     = useState(true)
+  const [rapport,     setRapport]     = useState(null)
+  const [generating,  setGenerating]  = useState(false)
 
-  function setMargeCible(v)   { setMargeCible_(v);   localStorage.setItem('aria_marge_cible', v) }
-  function setTicketMoyen(v)  { setTicketMoyen_(v);  localStorage.setItem('aria_ticket_moyen', v) }
+  useEffect(() => {
+    if (!user?.id) { setLoading(false); return }
+    ;(async () => {
+      const { data: etab } = await supabase.from('etablissements').select('id, marge_objectif').eq('owner_id', user.id).single()
+      const lsMarge = parseFloat(localStorage.getItem('aria_marge_cible') || '70')
+      if (etab) {
+        setEid(etab.id)
+        setMargeCible_(etab.marge_objectif != null ? etab.marge_objectif : lsMarge)
+        const [r, m] = await Promise.all([
+          supabase.from('recettes').select('*').eq('user_id', user.id),
+          supabase.from('menus').select('*').eq('etablissement_id', etab.id).eq('actif', true),
+        ])
+        if (r.data) setRecettes(r.data)
+        if (m.data) setMenus(m.data)
+      } else {
+        setMargeCible_(lsMarge)
+      }
+      setLoading(false)
+    })()
+  }, [user?.id])
+
+  function setPanierMoyen(v) { setPanierMoyen_(v); localStorage.setItem('aria_panier_moyen', v) }
+
+  async function saveMargeCible(v) {
+    setMargeCible_(v)
+    localStorage.setItem('aria_marge_cible', v)
+    if (eid) await supabase.from('etablissements').update({ marge_objectif: v }).eq('id', eid)
+  }
+
+  const cible = parseInt(margeCible)
+
+  // Recettes avec prix de vente + coût → marge brute
+  const recettesAvecMarge = recettes.filter(r => r.prix_vente > 0 && (r.cout_total != null || r.cout_matiere != null))
+  const margeGlobale = recettesAvecMarge.length > 0
+    ? recettesAvecMarge.reduce((s, r) => {
+        const cout = r.cout_total ?? r.cout_matiere ?? 0
+        return s + ((r.prix_vente - cout) / r.prix_vente) * 100
+      }, 0) / recettesAvecMarge.length
+    : null
 
   async function handleRapport() {
     setGenerating(true)
     setRapport(null)
     try {
-      const msg = `Analyse mes objectifs : marge brute cible ${margeCible}%${ticketMoyen ? `, ticket moyen cible ${ticketMoyen} €` : ''}. Donne 3-5 recommandations concrètes pour les atteindre.`
+      const msg = `Analyse mes objectifs : marge brute cible ${cible}%${panierMoyen ? `, panier moyen visé ${panierMoyen} €` : ''}${margeGlobale != null ? `. Marge réelle estimée depuis les recettes : ${margeGlobale.toFixed(1)}%` : ''}. Donne 3-5 recommandations concrètes pour atteindre ces objectifs.`
       const res  = await fetch('/api/aria', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ message: msg, userId: user?.id }) })
       const data = await res.json()
       setRapport(data.reply || 'Analyse non disponible.')
@@ -441,18 +447,20 @@ function TabObjectifs({ user }) {
 
   return (
     <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+
+      {/* Objectifs */}
       <div style={S.card}>
         <div style={S.cardTitle}>Objectifs de rentabilité</div>
         <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
           <div>
             <label style={{ fontSize:12, fontWeight:600, color:'#475569', marginBottom:6, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-              <span>Marge brute cible</span>
-              <span style={{ ...S.badge, background:'#EFF6FF', color:'#2563EB', fontSize:13, fontWeight:800 }}>{margeCible}%</span>
+              <span>Objectif marge brute</span>
+              <span style={{ ...S.badge, background:'#EFF6FF', color:'#2563EB', fontSize:13, fontWeight:800 }}>{cible}%</span>
             </label>
             <input
               type="range" min="0" max="100" step="1"
-              value={margeCible}
-              onChange={e => setMargeCible(parseInt(e.target.value))}
+              value={cible}
+              onChange={e => saveMargeCible(parseInt(e.target.value))}
               style={{ width:'100%', accentColor:'#2563EB' }}
             />
             <div style={{ display:'flex', justifyContent:'space-between', fontSize:10, color:'#94A3B8', marginTop:2 }}>
@@ -460,18 +468,113 @@ function TabObjectifs({ user }) {
             </div>
           </div>
           <div>
-            <label style={{ fontSize:12, fontWeight:600, color:'#475569', marginBottom:6, display:'block' }}>Ticket moyen cible (€)</label>
+            <label style={{ fontSize:12, fontWeight:600, color:'#475569', marginBottom:6, display:'block' }}>Panier moyen par couvert (€)</label>
             <input
               style={{ ...S.input, fontSize:18, fontWeight:700, fontFamily:"'DM Mono',monospace" }}
               type="number" step="0.50" min="0" placeholder="Ex: 28.00"
-              value={ticketMoyen}
-              onChange={e => setTicketMoyen(e.target.value)}
+              value={panierMoyen}
+              onChange={e => setPanierMoyen(e.target.value)}
             />
             <div style={{ fontSize:11, color:'#94A3B8', marginTop:4 }}>Prix de vente moyen par couvert visé</div>
           </div>
         </div>
       </div>
 
+      {/* Marge par menu */}
+      {loading ? (
+        <div style={S.card}><div style={S.empty}>Chargement…</div></div>
+      ) : menus.length === 0 ? (
+        <div style={{ ...S.card, background:'#F8FAFC' }}>
+          <div style={{ fontSize:13, color:'#94A3B8', textAlign:'center', padding:'6px 0' }}>
+            Aucun menu actif — créez des menus dans <strong>Mes Menus</strong> pour calculer la marge par menu.
+          </div>
+        </div>
+      ) : (
+        <div style={S.card}>
+          <div style={S.cardTitle}>Marge brute par menu</div>
+          {menus.map(m => {
+            const hasCout = m.cout_matiere != null && m.prix_vente > 0
+            const mg      = hasCout ? ((m.prix_vente - m.cout_matiere) / m.prix_vente) * 100 : null
+            const ok      = mg != null && mg >= cible
+            const danger  = mg != null && mg < cible - 10
+            const col     = mg == null ? '#CBD5E1' : danger ? '#EF4444' : ok ? '#10B981' : '#F59E0B'
+            return (
+              <div key={m.id} style={{ display:'flex', alignItems:'center', gap:12, padding:'11px 0', borderBottom:'1px solid #F8FAFC' }}>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontSize:13.5, fontWeight:700, color:'#0F172A' }}>{m.nom}</div>
+                  <div style={{ fontSize:11.5, color:'#94A3B8', marginTop:2 }}>
+                    {m.prix_vente.toFixed(2)} € TTC
+                    {hasCout ? ` · coût ${m.cout_matiere.toFixed(2)} €` : ' · coût non renseigné'}
+                  </div>
+                </div>
+                <div style={{ textAlign:'right', minWidth:72 }}>
+                  {mg != null ? (
+                    <>
+                      <div style={{ fontSize:17, fontWeight:800, fontFamily:"'DM Mono',monospace", color: col }}>{mg.toFixed(1)}%</div>
+                      <div style={{ fontSize:10, color: col, fontWeight:600, marginTop:1 }}>
+                        {ok ? `✅ +${(mg - cible).toFixed(1)}%` : `${danger ? '⚠️' : '⚡'} −${(cible - mg).toFixed(1)}%`}
+                      </div>
+                    </>
+                  ) : (
+                    <span style={{ fontSize:11, color:'#CBD5E1' }}>— %</span>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+          {menus.some(m => m.cout_matiere == null) && (
+            <div style={{ fontSize:12, color:'#F59E0B', marginTop:8 }}>
+              ⚠️ Renseignez le coût matière de chaque menu pour afficher leur marge.
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Marge globale depuis les recettes */}
+      {!loading && (
+        recettes.length === 0 ? (
+          <div style={{ ...S.card, background:'#FFFBEB', border:'1px solid #FDE68A' }}>
+            <div style={{ fontSize:13, color:'#92400E', display:'flex', gap:8, alignItems:'flex-start' }}>
+              <span>💡</span>
+              <span>Complétez vos <strong>Recettes</strong> (coût matière + prix de vente) pour afficher la marge brute globale de l'établissement.</span>
+            </div>
+          </div>
+        ) : recettesAvecMarge.length === 0 ? (
+          <div style={{ ...S.card, background:'#FFFBEB', border:'1px solid #FDE68A' }}>
+            <div style={{ fontSize:13, color:'#92400E', display:'flex', gap:8, alignItems:'flex-start' }}>
+              <span>💡</span>
+              <span>Renseignez le <strong>prix de vente</strong> et le <strong>coût matière</strong> de vos recettes pour calculer la marge brute globale.</span>
+            </div>
+          </div>
+        ) : (
+          <div style={S.card}>
+            <div style={S.cardTitle}>Marge brute globale (depuis les recettes)</div>
+            <MargeGauge reelle={margeGlobale} cible={cible} />
+            <div style={{ marginTop:14, display:'flex', flexDirection:'column', gap:6 }}>
+              {recettesAvecMarge.map(r => {
+                const cout  = r.cout_total ?? r.cout_matiere ?? 0
+                const mg    = ((r.prix_vente - cout) / r.prix_vente) * 100
+                const ok    = mg >= cible
+                const danger = mg < cible - 10
+                const col   = danger ? '#EF4444' : ok ? '#10B981' : '#F59E0B'
+                return (
+                  <div key={r.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 10px', background:'#F8FAFC', borderRadius:8 }}>
+                    <div style={{ flex:1, fontSize:13, fontWeight:600, color:'#0F172A' }}>{r.nom}</div>
+                    <div style={{ fontSize:11, color:'#94A3B8', fontFamily:"'DM Mono',monospace" }}>
+                      {r.prix_vente.toFixed(2)} € · coût {cout.toFixed(2)} €
+                    </div>
+                    <div style={{ fontSize:14, fontWeight:800, fontFamily:"'DM Mono',monospace", color: col, minWidth:48, textAlign:'right' }}>
+                      {mg.toFixed(1)}%
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )
+      )}
+
+      {/* Analyse Aria */}
       <div style={{ ...S.card, border:'1px solid #BFDBFE', background:'#EFF6FF' }}>
         <div style={{ ...S.rowBetween, marginBottom: rapport ? 12 : 0 }}>
           <div>
@@ -510,20 +613,25 @@ function TabClotures({ user }) {
   const [fromPhoto,  setFromPhoto]  = useState(false)
   const [validating, setValidating] = useState(false)
   const [ariaMsg,    setAriaMsg]    = useState(null)
+  const [eid,        setEid]        = useState(null)
   const fileRef = useRef(null)
 
   const margeCible = (() => { try { return parseFloat(localStorage.getItem('aria_marge_cible') || '70') } catch { return 70 } })()
 
   useEffect(() => {
     if (!user?.id) { setLoading(false); return }
-    Promise.all([
-      supabase.from('menus').select('*').eq('etablissement_id', user.id).eq('actif', true),
-      supabase.from('clotures_service').select('*').eq('etablissement_id', user.id).order('date', { ascending: false }).limit(7),
-    ]).then(([m, c]) => {
+    ;(async () => {
+      const { data: etab } = await supabase.from('etablissements').select('id').eq('owner_id', user.id).single()
+      if (!etab) { setLoading(false); return }
+      setEid(etab.id)
+      const [m, c] = await Promise.all([
+        supabase.from('menus').select('*').eq('etablissement_id', etab.id).eq('actif', true),
+        supabase.from('clotures_service').select('*').eq('etablissement_id', etab.id).order('date', { ascending: false }).limit(7),
+      ])
       if (m.data) setMenus(m.data)
       if (c.data) setClotures(c.data)
       setLoading(false)
-    })
+    })()
   }, [user?.id])
 
   function openModal(svc) {
@@ -586,7 +694,7 @@ function TabClotures({ user }) {
     const today  = new Date().toISOString().slice(0, 10)
     const ventes = detail.filter(d => d.nb > 0).map(d => ({ nom: d.menu.nom, nb: d.nb, ca: d.ca, cout: d.cout }))
     const { data } = await supabase.from('clotures_service').insert({
-      etablissement_id: user.id,
+      etablissement_id: eid,
       service,
       date: today,
       ventes,

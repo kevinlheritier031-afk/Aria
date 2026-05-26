@@ -7,6 +7,105 @@ import { supabase } from './supabase'
 function ok(data)  { return { success: true,  data, error: null } }
 function err(e)    { return { success: false, data: null, error: e?.message || String(e) } }
 
+// ── Rôles autorisés pour les suppressions structurelles ──────────────────────
+const ROLES_CHEF = ['proprietaire', 'chef']
+
+function refusSuppression(userRole, element) {
+  return { success: false, data: null, error: `La suppression de ${element} nécessite les droits de Chef ou Propriétaire. Veuillez contacter votre responsable.` }
+}
+
+// ── Outils supplémentaires exposés au serveur ─────────────────────────────────
+
+export const EXTRA_TOOLS = [
+  {
+    name: 'saisir_temperature',
+    description: 'Enregistrer un nouveau relevé de température HACCP',
+    input_schema: {
+      type: 'object',
+      properties: {
+        contexte: { type: 'string', description: 'Zone ou appareil (ex: Frigo 1, Bain-marie…)' },
+        valeur:   { type: 'number', description: 'Température en °C' },
+        conforme: { type: 'boolean', description: 'true si conforme aux seuils HACCP' },
+        motif_nc: { type: 'string',  description: 'Motif si non conforme' },
+      },
+      required: ['contexte', 'valeur'],
+    },
+  },
+  {
+    name: 'supprimer_recette',
+    description: 'Supprimer définitivement une recette — Propriétaire ou Chef uniquement',
+    input_schema: {
+      type: 'object',
+      properties: { id: { type: 'string', description: 'UUID de la recette' } },
+      required: ['id'],
+    },
+  },
+  {
+    name: 'supprimer_fournisseur',
+    description: 'Supprimer définitivement un fournisseur — Propriétaire ou Chef uniquement',
+    input_schema: {
+      type: 'object',
+      properties: { id: { type: 'string', description: 'UUID du fournisseur' } },
+      required: ['id'],
+    },
+  },
+  {
+    name: 'supprimer_produit_stock',
+    description: 'Supprimer définitivement un produit du stock — Propriétaire ou Chef uniquement',
+    input_schema: {
+      type: 'object',
+      properties: { id: { type: 'string', description: 'UUID du produit' } },
+      required: ['id'],
+    },
+  },
+  {
+    name: 'supprimer_zone_haccp',
+    description: 'Supprimer une zone HACCP — Propriétaire ou Chef uniquement',
+    input_schema: {
+      type: 'object',
+      properties: { id: { type: 'string', description: 'UUID de la zone HACCP' } },
+      required: ['id'],
+    },
+  },
+]
+
+export async function executeExtraTool(name, input, { userId, etablissementId, sb, userRole = 'employe' }) {
+  switch (name) {
+    case 'saisir_temperature': {
+      const temp = {
+        ...input,
+        user_id:    userId,
+        conforme:   input.conforme ?? (input.valeur <= 4 || input.valeur >= 63),
+        created_at: new Date().toISOString(),
+      }
+      const { data, error } = await sb.from('temperatures').insert(temp).select()
+      return error ? { success: false, error: error.message } : { success: true, data }
+    }
+    case 'supprimer_recette': {
+      if (!ROLES_CHEF.includes(userRole)) return refusSuppression(userRole, 'cette recette')
+      const { error } = await sb.from('recettes').delete().eq('id', input.id)
+      return error ? { success: false, error: error.message } : { success: true }
+    }
+    case 'supprimer_fournisseur': {
+      if (!ROLES_CHEF.includes(userRole)) return refusSuppression(userRole, 'ce fournisseur')
+      const { error } = await sb.from('fournisseurs').delete().eq('id', input.id)
+      return error ? { success: false, error: error.message } : { success: true }
+    }
+    case 'supprimer_produit_stock': {
+      if (!ROLES_CHEF.includes(userRole)) return refusSuppression(userRole, 'ce produit du stock')
+      const { error } = await sb.from('stock').delete().eq('id', input.id)
+      return error ? { success: false, error: error.message } : { success: true }
+    }
+    case 'supprimer_zone_haccp': {
+      if (!ROLES_CHEF.includes(userRole)) return refusSuppression(userRole, 'cette zone HACCP')
+      const { error } = await sb.from('haccp_zones').delete().eq('id', input.id)
+      return error ? { success: false, error: error.message } : { success: true }
+    }
+    default:
+      return null
+  }
+}
+
 export const ariaTools = {
 
   // ── STOCK ────────────────────────────────────────────────────────────────────

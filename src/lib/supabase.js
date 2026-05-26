@@ -216,16 +216,23 @@ export async function updateProfile(userId, updates) {
   return { data, error }
 }
 
-// ── Team PIN session (localStorage) ──────────────────────────────────────────
+// ── Team PIN session (sessionStorage) ────────────────────────────────────────
+// sessionStorage est vidé à la fermeture de l'onglet, contrairement à localStorage.
+// Amélioration intermédiaire contre XSS ; une solution complète nécessitera des sessions serveur.
 
 export function getTeamSession() {
-  try { return JSON.parse(localStorage.getItem('aria_team_session') || 'null') } catch { return null }
+  try { return JSON.parse(sessionStorage.getItem('aria_team_session') || 'null') } catch { return null }
 }
 
 export function setTeamSession(session) {
-  try { localStorage.setItem('aria_team_session', JSON.stringify(session)) } catch {}
+  try { sessionStorage.setItem('aria_team_session', JSON.stringify(session)) } catch {}
 }
 
 export function clearTeamSession() {
-  try { localStorage.removeItem('aria_team_session') } catch {}
+  try { sessionStorage.removeItem('aria_team_session') } catch {}
+}
+
+export async function insertStockPerte(perte) {
+  const { data, error } = await supabase.from('stock_pertes').insert(perte);
+  return { data, error };
 }

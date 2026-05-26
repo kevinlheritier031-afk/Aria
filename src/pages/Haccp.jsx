@@ -56,27 +56,27 @@ function ConformiteModal({ conformite, onClose }) {
 
   return (
     <div style={S.overlay} onClick={onClose}>
-      <div style={{ ...S.sheet, padding: '24px 20px 40px' }} onClick={e => e.stopPropagation()}>
+      <div style={S.conformiteSheet} onClick={e => e.stopPropagation()}>
         <div style={S.handle} />
-        <div style={{ textAlign: 'center', marginBottom: 20 }}>
+        <div style={S.conformiteCenter}>
           <div style={{ fontSize: 52, fontWeight: 800, color: scoreColor, lineHeight: 1 }}>{score}%</div>
           <div style={{ fontSize: 13.5, color: '#64748B', marginTop: 6 }}>
             Conformité HACCP — niveau&nbsp;
             <strong>{niveau === 'complet' ? '🏆 Complet' : niveau === 'partiel' ? '📈 Partiel' : '🚀 Découverte'}</strong>
           </div>
           {/* Progress bar */}
-          <div style={{ height: 8, background: '#E2E8F0', borderRadius: 99, marginTop: 14, overflow: 'hidden' }}>
+          <div style={S.conformiteBarTrack}>
             <div style={{ height: '100%', width: `${score}%`, background: scoreColor, borderRadius: 99, transition: 'width .5s' }} />
           </div>
         </div>
 
         {sections.map(section => (
-          <div key={section.title} style={{ marginBottom: 16 }}>
-            <div style={{ fontSize: 10.5, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '.6px', marginBottom: 8 }}>{section.title}</div>
+          <div key={section.title} style={S.sectionBlock}>
+            <div style={S.sectionLbl}>{section.title}</div>
             {section.items.map(item => (
-              <div key={item.label} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 7 }}>
-                <span style={{ fontSize: 12.5, color: '#0F172A', flex: 1 }}>{item.label}</span>
-                {item.sub && <span style={{ fontSize: 11, color: '#94A3B8' }}>{item.sub}</span>}
+              <div key={item.label} style={S.sectionRow}>
+                <span style={S.sectionItemLbl}>{item.label}</span>
+                {item.sub && <span style={S.sectionSubLbl}>{item.sub}</span>}
                 <span style={{ fontSize: 12, fontWeight: 700, color: item.pts === item.max ? '#10B981' : '#475569', width: 36, textAlign: 'right', flexShrink: 0 }}>{item.pts}/{item.max}</span>
               </div>
             ))}
@@ -102,15 +102,15 @@ function TempModal({ title, sub, extra, onClose, onSubmit, saving }) {
     <div style={S.overlay} onClick={onClose}>
       <div style={S.sheet} onClick={e => e.stopPropagation()}>
         <div style={S.handle} />
-        <div style={{ fontSize: 16, fontWeight: 700, color: '#0F172A', marginBottom: 4 }}>{title}</div>
-        {sub && <div style={{ fontSize: 12.5, color: '#94A3B8', marginBottom: 16 }}>{sub}</div>}
+        <div style={S.tempTitle}>{title}</div>
+        {sub && <div style={S.tempSub}>{sub}</div>}
         {extra && (
           <div style={{ marginBottom: 14 }}>
             <label style={S.label}>{extra.label}</label>
             <input value={ext} onChange={e => setExt(e.target.value)} style={S.input} placeholder={extra.placeholder} />
           </div>
         )}
-        <div style={{ textAlign: 'center', marginBottom: 4 }}>
+        <div style={S.tempCenter}>
           <input
             ref={inputRef}
             type="number"
@@ -118,9 +118,9 @@ function TempModal({ title, sub, extra, onClose, onSubmit, saving }) {
             value={val}
             onChange={e => setVal(e.target.value)}
             placeholder="0.0"
-            style={{ fontSize: 52, fontWeight: 800, color: '#0F172A', border: 'none', borderBottom: '3px solid #2563EB', textAlign: 'center', width: '100%', outline: 'none', background: 'transparent', padding: '8px 0', fontFamily: F }}
+            style={S.tempInput}
           />
-          <div style={{ fontSize: 18, color: '#94A3B8', marginTop: 4 }}>°C</div>
+          <div style={S.tempUnit}>°C</div>
         </div>
         <button
           onClick={() => val !== '' && onSubmit(parseFloat(val), ext)}
@@ -750,7 +750,7 @@ export default function Haccp({ user, profile, fromDashboard, onBack, setPage })
     setSaving(true)
     const [h, m] = newChaudHeure.split(':').map(Number)
     const debut  = new Date(); debut.setHours(h, m, 0, 0)
-    const { data } = await supabase.from('haccp_plats_chaud').insert({
+    const { data, error } = await supabase.from('haccp_plats_chaud').insert({
       etablissement_id: eid,
       nom:           newChaudNom.trim(),
       type:          newChaudType,
@@ -759,14 +759,23 @@ export default function Haccp({ user, profile, fromDashboard, onBack, setPage })
       statut:        'actif',
       prise_par:     user.id,
     }).select().single()
-    if (data) {
-      setPlatsChaud(p => [data, ...p])
-      if (newChaudTemp !== '' && parseFloat(newChaudTemp) >= 63) {
-        await supabase.from('haccp_temperatures').insert({
-          etablissement_id: eid, type: 'chaud', valeur: parseFloat(newChaudTemp),
-          conforme: true, prise_par: user.id, plat_nom: newChaudNom.trim(),
-        }).select().single().then(r => { if (r.data) setTemps(p => [r.data, ...p]) })
-      }
+    if (error) {
+      console.error('[HACCP chaud] Erreur insertion haccp_plats_chaud:', error)
+      setSaving(false)
+      return
+    }
+    if (!data) {
+      console.error('[HACCP chaud] Insertion sans erreur mais data null — vérifier RLS Supabase')
+      setSaving(false)
+      return
+    }
+    setPlatsChaud(p => [data, ...p])
+    if (newChaudTemp !== '' && parseFloat(newChaudTemp) >= 63) {
+      const { error: tErr } = await supabase.from('haccp_temperatures').insert({
+        etablissement_id: eid, type: 'chaud', valeur: parseFloat(newChaudTemp),
+        conforme: true, prise_par: user.id, plat_nom: newChaudNom.trim(),
+      }).select().single().then(r => { if (r.data) setTemps(p => [r.data, ...p]); return r })
+      if (tErr) console.error('[HACCP chaud] Erreur insertion haccp_temperatures:', tErr)
     }
     setSaving(false)
     setChaudServiceModal(false)
@@ -865,6 +874,16 @@ export default function Haccp({ user, profile, fromDashboard, onBack, setPage })
     }).select().single()
     if (data) setAppareils(p => [...p, data])
     setNewApNom(''); setNewApMin(''); setNewApMax(''); setNewApZone('')
+    setSavingZone(false)
+  }
+
+  const deleteZone = async (zone) => {
+    if (!window.confirm(`Supprimer cette zone et tout le matériel associé ?`)) return
+    setSavingZone(true)
+    await supabase.from('haccp_appareils').delete().eq('zone_id', zone.id)
+    await supabase.from('haccp_zones').delete().eq('id', zone.id)
+    setAppareils(p => p.filter(a => a.zone_id !== zone.id))
+    setZones(p => p.filter(z => z.id !== zone.id))
     setSavingZone(false)
   }
 
@@ -2066,8 +2085,9 @@ export default function Haccp({ user, profile, fromDashboard, onBack, setPage })
 
             {zones.map(z => (
               <div key={z.id} style={{ background: '#F8FAFC', borderRadius: 12, padding: '10px 14px', marginBottom: 8, border: '1px solid #E2E8F0' }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: '#0F172A', marginBottom: 4 }}>
-                  {z.nom} <span style={{ fontSize: 11, color: '#94A3B8', fontWeight: 500 }}>({z.type || 'froid'})</span>
+                <div style={{ fontSize: 13, fontWeight: 700, color: '#0F172A', marginBottom: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span>{z.nom} <span style={{ fontSize: 11, color: '#94A3B8', fontWeight: 500 }}>({z.type || 'froid'})</span></span>
+                  <button onClick={() => deleteZone(z)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, padding: '0 4px', color: '#EF4444', lineHeight: 1 }}>🗑️</button>
                 </div>
                 {appareils.filter(a => a.zone_id === z.id).map(a => (
                   <div key={a.id} style={{ fontSize: 12, color: '#64748B', marginBottom: 2 }}>
@@ -2164,4 +2184,21 @@ const S = {
     background: '#F8FAFC', color: '#475569', fontWeight: 500, fontSize: 13,
     cursor: 'pointer', fontFamily: F, flexShrink: 0,
   },
+
+  // ConformiteModal
+  conformiteSheet:    { background: '#fff', borderRadius: '24px 24px 0 0', padding: '24px 20px 40px', maxHeight: '90vh', overflowY: 'auto', fontFamily: F },
+  conformiteCenter:   { textAlign: 'center', marginBottom: 20 },
+  conformiteBarTrack: { height: 8, background: '#E2E8F0', borderRadius: 99, marginTop: 14, overflow: 'hidden' },
+  sectionBlock:       { marginBottom: 16 },
+  sectionLbl:         { fontSize: 10.5, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '.6px', marginBottom: 8 },
+  sectionRow:         { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 7 },
+  sectionItemLbl:     { fontSize: 12.5, color: '#0F172A', flex: 1 },
+  sectionSubLbl:      { fontSize: 11, color: '#94A3B8' },
+
+  // TempModal
+  tempTitle:  { fontSize: 16, fontWeight: 700, color: '#0F172A', marginBottom: 4 },
+  tempSub:    { fontSize: 12.5, color: '#94A3B8', marginBottom: 16 },
+  tempCenter: { textAlign: 'center', marginBottom: 4 },
+  tempInput:  { fontSize: 52, fontWeight: 800, color: '#0F172A', border: 'none', borderBottom: '3px solid #2563EB', textAlign: 'center', width: '100%', outline: 'none', background: 'transparent', padding: '8px 0', fontFamily: F },
+  tempUnit:   { fontSize: 18, color: '#94A3B8', marginTop: 4 },
 }

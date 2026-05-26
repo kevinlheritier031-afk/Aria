@@ -223,11 +223,18 @@ const BASE_TOOLS = [
   },
 ]
 
-const ALL_TOOLS = [...BASE_TOOLS, ...EXTRA_TOOLS]
+const ALL_TOOLS = [...BASE_TOOLS, ...(Array.isArray(EXTRA_TOOLS) ? EXTRA_TOOLS : [])]
 
 // ── Tool executor ─────────────────────────────────────────────────────────────
 
-async function executeTool(name, input, { userId, accessToken, etablissementId }) {
+// Toute tentative de modification/suppression d'une trace légale est bloquée au niveau exécution
+const IMMUTABLE_TOOL_GUARD = ['modifier_temperature', 'supprimer_temperature', 'modifier_etiquette', 'supprimer_etiquette']
+
+async function executeTool(name, input, { userId, accessToken, etablissementId, userRole = 'employe' }) {
+  if (IMMUTABLE_TOOL_GUARD.includes(name)) {
+    return { error: "Trace légale immuable — cette donnée ne peut pas être modifiée ou supprimée. Il s'agit d'une exigence réglementaire HACCP." }
+  }
+
   const sb = getSupabase(accessToken)
   if (!sb) return { error: 'Supabase non configuré' }
 
@@ -352,7 +359,7 @@ async function executeTool(name, input, { userId, accessToken, etablissementId }
       return error ? { error: error.message } : (data || [])
     }
     default: {
-      const extraResult = await executeExtraTool(name, input, { userId, etablissementId, sb })
+      const extraResult = await executeExtraTool(name, input, { userId, etablissementId, sb, userRole })
       if (extraResult !== null) return extraResult
       return { error: `Outil inconnu : ${name}` }
     }
@@ -551,6 +558,37 @@ Chaque action que tu effectues en base doit être confirmée à l'utilisateur av
 - Températures conformes : réfrigération ≤4°C, chaud ≥63°C, réception ≤8°C
 
 ════════════════════════
+RÈGLES MÉTIER ABSOLUES
+════════════════════════
+
+Tu appliques en permanence ces trois niveaux de contrôle, dans cet ordre de priorité :
+
+NIVEAU 1 — ACTIONS COURANTES → tu exécutes directement, sans restriction
+Lectures, saisies, modifications courantes : ajouter un produit au stock, créer une étiquette DLC, enregistrer une commande, saisir une température HACCP, créer ou modifier une recette, ajuster une quantité, noter un relevé.
+
+NIVEAU 2 — TRACES LÉGALES IMMUABLES → tu refuses systématiquement, pour tout le monde
+Les données suivantes ne peuvent JAMAIS être modifiées ni supprimées, quel que soit le rôle — propriétaire inclus :
+• Relevés de températures HACCP une fois enregistrés
+• DLC capturées via étiquettes une fois créées
+
+Si une demande porte sur la modification ou la suppression de ces données, réponds :
+"Ces données sont des traces légales immuables, exigées par la réglementation HACCP. Elles ne peuvent pas être modifiées ou supprimées, même par un propriétaire. En cas d'erreur de saisie, un nouveau relevé correctif doit être créé."
+
+NIVEAU 3 — SUPPRESSIONS STRUCTURELLES → tu vérifies le rôle, tu demandes confirmation
+Réservées exclusivement aux rôles Propriétaire et Chef :
+• Supprimer une recette (supprimer_recette)
+• Supprimer un fournisseur (supprimer_fournisseur)
+• Supprimer un produit du stock définitivement (supprimer_produit_stock)
+• Supprimer une zone HACCP (supprimer_zone_haccp)
+
+Si le demandeur est Second / Cuisinier / Pâtissier / Employé → refuse poliment :
+"Je suis désolée, la suppression de [élément] nécessite les droits de Chef ou Propriétaire. Veuillez contacter votre responsable."
+
+Si le demandeur est Propriétaire ou Chef → demande une confirmation explicite avant d'exécuter :
+"Confirmez-vous la suppression définitive de [nom] ? Cette action est irréversible."
+Puis exécute uniquement après confirmation.
+
+════════════════════════
 COACH DE PROGRESSION MODULES
 ════════════════════════
 
@@ -639,6 +677,7 @@ export default async function handler(req, res) {
     } catch { /* ignore */ }
   }
 
+  const userRole      = context?.user_role || 'employe'
   const systemPrompt  = buildSystemPrompt(context)
   const contextBlock  = buildContextBlock(context)
   const userContent   = contextBlock
@@ -650,7 +689,7 @@ export default async function handler(req, res) {
     { role: 'user', content: userContent },
   ]
 
-  const toolCtx  = { userId, accessToken, etablissementId }
+  const toolCtx  = { userId, accessToken, etablissementId, userRole }
   let iterations = 0
 
   try {

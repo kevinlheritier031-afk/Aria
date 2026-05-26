@@ -1,9 +1,9 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
-import { upsertStock, deleteStockItem, fetchLabResults } from '../lib/supabase'
-import { CAT_ICON, CAT_COLOR, CAT_BG, UNITES, dlcStatus, dlcDays, dlcColor, uid, fdate } from '../constants'
+import { upsertStock, deleteStockItem, fetchLabResults, insertStockPerte } from '../lib/supabase'
+import { CAT_ICON, CAT_COLOR, CAT_BG, UNITES, dlcStatus, dlcDays, dlcColor, uid, fdate, critique } from '../constants'
 
 const CATS    = ['viande','poisson','laitier','epicerie','legumes','boissons','autre']
-const MODES   = [{ k:'liste', l:'Liste' }, { k:'sortie', l:'Sortie' }, { k:'flash', l:'Flash' }]
+const MODES   = [{ k:'liste', l:'Liste' }, { k:'sortie', l:'Sortie' }]
 const FILTERS = ['tout','commander','ok','j7','j3','expiré', ...CATS]
 const FL      = { tout:'Tout', commander:'À commander', ok:'DLC OK', j7:'J-7', j3:'J-3', 'expiré':'Expirés' }
 
@@ -14,10 +14,12 @@ const MOTIFS = [
   { k:'périmé',   l:'Périmé',   icon:'🗑️',  color:'#EF4444', bg:'#FEF2F2' },
 ]
 
-const critique = (item) => {
-  const s = parseFloat(item.seuil_min)
-  return isNaN(s) ? item.q <= 2 : item.q <= s
-}
+const DEL_MOTIFS = [
+  { k:'erreur',     l:'Erreur de saisie', icon:'✏️',  desc:'Aucune perte enregistrée', color:'#64748B', bg:'#F8FAFC' },
+  { k:'casse',      l:'Casse',            icon:'💥',  desc:'Produit endommagé',         color:'#F59E0B', bg:'#FFFBEB' },
+  { k:'péremption', l:'Péremption',       icon:'📅',  desc:'DLC dépassée',              color:'#EF4444', bg:'#FEF2F2' },
+  { k:'autre',      l:'Autre',            icon:'📝',  desc:'Précisez ci-dessous',       color:'#2563EB', bg:'#EFF6FF' },
+]
 
 // ── DLC Pill ──────────────────────────────────────────────────────────────────
 
@@ -67,6 +69,9 @@ function ProductCard({ item, onEdit, onDelete, mode, onSortie, certified, selMod
           {crit && (
             <span style={S.seuilBadge}>Seuil</span>
           )}
+          {st === 'expired' && (
+            <span style={{ fontSize:10, fontWeight:700, color:'#DC2626', background:'#FEF2F2', padding:'2px 7px', borderRadius:99, border:'1px solid #FECACA', whiteSpace:'nowrap' }}>Périmé</span>
+          )}
         </div>
         <div style={S.cardMeta}>
           {item.four && <span>{item.four}</span>}
@@ -104,33 +109,62 @@ function ProductCard({ item, onEdit, onDelete, mode, onSortie, certified, selMod
   )
 }
 
-// ── Flash Row ─────────────────────────────────────────────────────────────────
+// ── Delete Qualification Modal ────────────────────────────────────────────────
 
-function FlashRow({ item, onQtyUpdate }) {
-  const [val, setVal] = useState(String(item.q))
-  const crit = critique({ ...item, q: Number(val) || 0 })
-
-  function commit() {
-    const n = parseFloat(val)
-    if (!isNaN(n) && n !== item.q) onQtyUpdate(item, n)
-  }
-
+function DeleteQualModal({ count, onConfirm, onClose }) {
+  const [motif,   setMotif]   = useState('erreur')
+  const [comment, setComment] = useState('')
   return (
-    <div style={S.flashRow}>
-      <span style={{ fontSize:18 }}>{CAT_ICON[item.cat||'autre']||'📦'}</span>
-      <div style={S.flashInfo}>
-        <span style={S.flashNom}>{item.nom}</span>
-        {item.four && <span style={S.flashMeta}>{item.four}</span>}
-      </div>
-      <div style={S.flashQtyWrap}>
-        <input
-          style={{ ...S.flashQtyInput, borderColor: crit ? '#F59E0B' : '#E2E8F0', color: crit ? '#F59E0B' : '#0F172A' }}
-          type="number" min="0" step="0.1"
-          value={val}
-          onChange={e => setVal(e.target.value)}
-          onBlur={commit}
-        />
-        <span style={S.flashU}>{item.u}</span>
+    <div style={S.backdrop} onClick={onClose}>
+      <div style={{ ...S.modal, maxWidth:420 }} onClick={e => e.stopPropagation()}>
+        <div style={S.modalHeader}>
+          <div>
+            <div style={S.modalTitle}>
+              Supprimer {count > 1 ? `${count} produits` : 'ce produit'}
+            </div>
+            <div style={{ fontSize:12.5, color:'#94A3B8', marginTop:2 }}>Motif de suppression</div>
+          </div>
+          <button style={S.closeBtn} onClick={onClose}>✕</button>
+        </div>
+        <div style={S.modalBody}>
+          <div style={S.motifGrid}>
+            {DEL_MOTIFS.map(m => (
+              <button key={m.k} type="button"
+                style={{ ...S.motifBtn, padding:'14px 8px', ...(motif === m.k ? { background: m.bg, borderColor: m.color, color: m.color } : {}) }}
+                onClick={() => setMotif(m.k)}>
+                <span style={{ fontSize:22 }}>{m.icon}</span>
+                <span style={{ fontSize:12, fontWeight:600, marginTop:2 }}>{m.l}</span>
+                <span style={{ fontSize:10.5, color: motif === m.k ? m.color : '#94A3B8', marginTop:1 }}>{m.desc}</span>
+              </button>
+            ))}
+          </div>
+          {motif === 'autre' && (
+            <div>
+              <div style={S.fieldLabel}>Précisez</div>
+              <textarea
+                style={{ ...S.input, resize:'vertical', minHeight:68, marginTop:4 }}
+                placeholder="Décrivez le motif…"
+                value={comment}
+                onChange={e => setComment(e.target.value)}
+              />
+            </div>
+          )}
+          {motif === 'erreur' && (
+            <div style={{ fontSize:12.5, color:'#64748B', background:'#F8FAFC', borderRadius:10, padding:'10px 14px', border:'1px solid #E2E8F0' }}>
+              Suppression pure — aucune perte ne sera enregistrée dans le registre.
+            </div>
+          )}
+        </div>
+        <div style={S.modalFooter}>
+          <button style={S.btnSecondary} onClick={onClose}>Annuler</button>
+          <button
+            style={{ ...S.btnDanger, opacity: motif === 'autre' && !comment.trim() ? .5 : 1 }}
+            onClick={() => onConfirm(motif, comment)}
+            disabled={motif === 'autre' && !comment.trim()}
+          >
+            Supprimer
+          </button>
+        </div>
       </div>
     </div>
   )
@@ -345,19 +379,19 @@ export default function Stock({ stock = [], setStock, fournisseurs = [], user, p
   const [search,         setSearch]         = useState('')
   const [editItem,       setEditItem]       = useState(null)
   const [sortieItem,     setSortieItem]     = useState(null)
-  const [confirmId,      setConfirmId]      = useState(null)
+  const [deleteModal,    setDeleteModal]    = useState(null)
   const [saving,         setSaving]         = useState(false)
   const [certifiedNames, setCertifiedNames] = useState(new Set())
   const [selMode,        setSelMode]        = useState(false)
   const [selectedIds,    setSelectedIds]    = useState(new Set())
-  const [confirmMulti,   setConfirmMulti]   = useState(false)
   const [addMenu,        setAddMenu]        = useState(false)
   const [analyzing,      setAnalyzing]      = useState(false)
   const [photoProducts,  setPhotoProducts]  = useState(null)
   const [photoError,     setPhotoError]     = useState(null)
 
-  const cameraRef  = useRef(null)
-  const galleryRef = useRef(null)
+  const cameraRef        = useRef(null)
+  const galleryRef       = useRef(null)
+  const loggedExpiredRef = useRef(new Set())
 
   useEffect(() => {
     fetchLabResults(user.id).then(({ data }) => {
@@ -368,6 +402,27 @@ export default function Stock({ stock = [], setStock, fournisseurs = [], user, p
       }
     })
   }, [user.id])
+
+  useEffect(() => {
+    if (!user?.id) return
+    const expired = stock.filter(i => dlcStatus(i.dlc) === 'expired' && !loggedExpiredRef.current.has(i.id))
+    if (expired.length === 0) return
+    expired.forEach(item => {
+      loggedExpiredRef.current.add(item.id)
+      insertStockPerte({
+        id:               crypto.randomUUID(),
+        stock_id:         item.id,
+        lot_id:           item.lot || null,
+        motif:            'péremption',
+        commentaire:      null,
+        quantite:         item.q,
+        created_by:       user.id,
+        user_id:          user.id,
+        etablissement_id: profile?.etablissement_id,
+        created_at:       new Date().toISOString(),
+      })
+    })
+  }, [stock, user?.id])
 
   const filtered = useMemo(() => {
     let items = [...stock]
@@ -406,10 +461,28 @@ export default function Stock({ stock = [], setStock, fournisseurs = [], user, p
     setEditItem(null)
   }
 
-  async function handleDelete(id) {
-    await deleteStockItem(id)
-    setStock(s => s.filter(i => i.id !== id))
-    setConfirmId(null)
+  async function handleDeleteWithMotif(motif, commentaire) {
+    if (!deleteModal) return
+    const { ids } = deleteModal
+    if (motif !== 'erreur') {
+      const items = stock.filter(i => ids.includes(i.id))
+      await Promise.all(items.map(item => insertStockPerte({
+        id:               crypto.randomUUID(),
+        stock_id:         item.id,
+        lot_id:           item.lot || null,
+        motif,
+        commentaire:      motif === 'autre' ? commentaire.trim() : null,
+        quantite:         item.q,
+        created_by:       user.id,
+        user_id:          user.id,
+        etablissement_id: profile?.etablissement_id,
+        created_at:       new Date().toISOString(),
+      })))
+    }
+    await Promise.all(ids.map(id => deleteStockItem(id)))
+    setStock(s => s.filter(i => !ids.includes(i.id)))
+    if (ids.length > 1) { setSelectedIds(new Set()); setSelMode(false) }
+    setDeleteModal(null)
   }
 
   async function handleSortie(item, qte, motif) {
@@ -430,14 +503,6 @@ export default function Stock({ stock = [], setStock, fournisseurs = [], user, p
     })
   }
 
-  async function handleDeleteMulti() {
-    const ids = [...selectedIds]
-    await Promise.all(ids.map(id => deleteStockItem(id)))
-    setStock(s => s.filter(i => !selectedIds.has(i.id)))
-    setSelectedIds(new Set())
-    setSelMode(false)
-    setConfirmMulti(false)
-  }
 
   const updatePhotoProduct = (id, field, val) =>
     setPhotoProducts(prev => prev.map(p => p._id === id ? { ...p, [field]: val } : p))
@@ -503,13 +568,6 @@ export default function Stock({ stock = [], setStock, fournisseurs = [], user, p
     setSaving(false)
   }
 
-  async function handleFlashUpdate(item, newQ) {
-    const updated = { ...item, q: newQ, user_id: user.id, etablissement_id: profile?.etablissement_id }
-    const { error } = await upsertStock([updated])
-    if (error) { console.error('❌ INSERT FAIL:', 'stock (flash)', error); return }
-    console.log('✅ INSERT OK:', 'stock (flash)', updated)
-    setStock(s => s.map(i => i.id === item.id ? { ...i, q: newQ } : i))
-  }
 
   return (
     <div style={S.page}>
@@ -545,93 +603,63 @@ export default function Stock({ stock = [], setStock, fournisseurs = [], user, p
         ))}
       </div>
 
-      {mode !== 'flash' && (
-        <>
-          {/* Search */}
-          <input
-            style={S.search}
-            placeholder="🔍 Rechercher un produit ou fournisseur…"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-          />
+      {/* Search */}
+      <input
+        style={S.search}
+        placeholder="🔍 Rechercher un produit ou fournisseur…"
+        value={search}
+        onChange={e => setSearch(e.target.value)}
+      />
 
-          {/* Filter pills */}
-          <div style={S.pills}>
-            {FILTERS.map(f => {
-              const isActive = filter === f
-              const isCmdr   = f === 'commander'
-              return (
-                <button key={f}
-                  style={{ ...S.pill2, ...(isActive ? (isCmdr ? S.pillOrange : S.pillActive) : {}) }}
-                  onClick={() => setFilter(f)}>
-                  {CATS.includes(f) ? `${CAT_ICON[f]} ` : ''}{FL[f] || f}
-                  {isCmdr && nCommander > 0 && (
-                    <span style={{ ...S.filterBadge, background: isActive ? '#F59E0B' : '#FDE68A', color: isActive ? '#fff' : '#92400E' }}>
-                      {nCommander}
-                    </span>
-                  )}
-                </button>
-              )
-            })}
-          </div>
+      {/* Filter pills */}
+      <div style={S.pills}>
+        {FILTERS.map(f => {
+          const isActive = filter === f
+          const isCmdr   = f === 'commander'
+          return (
+            <button key={f}
+              style={{ ...S.pill2, ...(isActive ? (isCmdr ? S.pillOrange : S.pillActive) : {}) }}
+              onClick={() => setFilter(f)}>
+              {CATS.includes(f) ? `${CAT_ICON[f]} ` : ''}{FL[f] || f}
+              {isCmdr && nCommander > 0 && (
+                <span style={{ ...S.filterBadge, background: isActive ? '#F59E0B' : '#FDE68A', color: isActive ? '#fff' : '#92400E' }}>
+                  {nCommander}
+                </span>
+              )}
+            </button>
+          )
+        })}
+      </div>
 
-          <div style={S.count}>{filtered.length} produit{filtered.length !== 1 ? 's' : ''}</div>
-        </>
-      )}
+      <div style={S.count}>{filtered.length} produit{filtered.length !== 1 ? 's' : ''}</div>
 
       {/* ── Liste / Sortie ── */}
-      {mode !== 'flash' && (
-        filtered.length === 0
-          ? <div style={S.empty}>Aucun produit{search ? ' trouvé' : ''}</div>
-          : (
-            <div style={S.list}>
-              {filtered.map(item => (
-                <ProductCard key={item.id} item={item} mode={mode}
-                  onEdit={setEditItem}
-                  onDelete={id => setConfirmId(id)}
-                  onSortie={setSortieItem}
-                  certified={certifiedNames.has(item.nom?.trim().toLowerCase())}
-                  selMode={selMode}
-                  selected={selectedIds.has(item.id)}
-                  onToggle={toggleSelect}
-                />
-              ))}
-            </div>
-          )
-      )}
-
-      {/* ── Flash stock ── */}
-      {mode === 'flash' && (
-        <div style={S.flashSection}>
-          <div style={S.flashHeader}>
-            <span style={S.flashHeaderText}>Mise à jour rapide des quantités</span>
-            <input style={{ ...S.search, flex:1 }} placeholder="🔍 Filtrer…"
-              value={search} onChange={e => setSearch(e.target.value)} />
-          </div>
-          <div style={S.flashList}>
+      {filtered.length === 0
+        ? <div style={S.empty}>Aucun produit{search ? ' trouvé' : ''}</div>
+        : (
+          <div style={S.list}>
             {filtered.map(item => (
-              <FlashRow key={item.id} item={item} onQtyUpdate={handleFlashUpdate} />
+              <ProductCard key={item.id} item={item} mode={mode}
+                onEdit={setEditItem}
+                onDelete={id => setDeleteModal({ ids: [id] })}
+                onSortie={setSortieItem}
+                certified={certifiedNames.has(item.nom?.trim().toLowerCase())}
+                selMode={selMode}
+                selected={selectedIds.has(item.id)}
+                onToggle={toggleSelect}
+              />
             ))}
-            {filtered.length === 0 && <div style={S.empty}>Aucun produit</div>}
           </div>
-        </div>
-      )}
+        )
+      }
 
-      {/* ── Confirm delete ── */}
-      {confirmId && (
-        <div style={S.backdrop} onClick={() => setConfirmId(null)}>
-          <div style={{ ...S.modal, maxWidth:340 }} onClick={e => e.stopPropagation()}>
-            <div style={{ padding:'28px 24px', textAlign:'center' }}>
-              <div style={{ fontSize:36, marginBottom:12 }}>🗑️</div>
-              <div style={{ fontSize:15, fontWeight:600, color:'#0F172A', marginBottom:6 }}>Supprimer ce produit ?</div>
-              <div style={{ fontSize:13, color:'#64748B', marginBottom:20 }}>Cette action est irréversible.</div>
-              <div style={{ display:'flex', gap:10 }}>
-                <button style={S.btnSecondary} onClick={() => setConfirmId(null)}>Annuler</button>
-                <button style={{ ...S.btnDanger, flex:1 }} onClick={() => handleDelete(confirmId)}>Supprimer</button>
-              </div>
-            </div>
-          </div>
-        </div>
+      {/* ── Delete qualification modal ── */}
+      {deleteModal && (
+        <DeleteQualModal
+          count={deleteModal.ids.length}
+          onConfirm={handleDeleteWithMotif}
+          onClose={() => setDeleteModal(null)}
+        />
       )}
 
       {/* ── Sortie sheet ── */}
@@ -645,24 +673,6 @@ export default function Stock({ stock = [], setStock, fournisseurs = [], user, p
           onSave={handleSave} onClose={() => setEditItem(null)} saving={saving} />
       )}
 
-      {/* ── Confirm multi-delete ── */}
-      {confirmMulti && (
-        <div style={S.backdrop} onClick={() => setConfirmMulti(false)}>
-          <div style={{ ...S.modal, maxWidth:340 }} onClick={e => e.stopPropagation()}>
-            <div style={{ padding:'28px 24px', textAlign:'center' }}>
-              <div style={{ fontSize:36, marginBottom:12 }}>🗑️</div>
-              <div style={{ fontSize:15, fontWeight:600, color:'#0F172A', marginBottom:6 }}>
-                Supprimer {selectedIds.size} produit{selectedIds.size > 1 ? 's' : ''} ?
-              </div>
-              <div style={{ fontSize:13, color:'#64748B', marginBottom:20 }}>Cette action est irréversible.</div>
-              <div style={{ display:'flex', gap:10 }}>
-                <button style={S.btnSecondary} onClick={() => setConfirmMulti(false)}>Annuler</button>
-                <button style={{ ...S.btnDanger, flex:1 }} onClick={handleDeleteMulti}>Supprimer</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ── Selection bar ── */}
       {selMode && selectedIds.size > 0 && (
@@ -670,7 +680,7 @@ export default function Stock({ stock = [], setStock, fournisseurs = [], user, p
           <span style={{ fontSize:14, fontWeight:600, color:'#0F172A' }}>
             {selectedIds.size} sélectionné{selectedIds.size > 1 ? 's' : ''}
           </span>
-          <button style={S.btnDanger} onClick={() => setConfirmMulti(true)}>
+          <button style={S.btnDanger} onClick={() => setDeleteModal({ ids: [...selectedIds] })}>
             Supprimer
           </button>
         </div>
@@ -682,11 +692,11 @@ export default function Stock({ stock = [], setStock, fournisseurs = [], user, p
 
       {/* ── Analyzing overlay ── */}
       {analyzing && (
-        <div style={{ ...S.backdrop, alignItems:'center', justifyContent:'center' }}>
-          <div style={{ background:'#fff', borderRadius:20, padding:'32px 40px', textAlign:'center', display:'flex', flexDirection:'column', alignItems:'center', gap:14, boxShadow:'0 8px 40px rgba(0,0,0,.15)' }}>
-            <div style={{ fontSize:40 }}>📸</div>
-            <div style={{ fontSize:15, fontWeight:700, color:'#0F172A', fontFamily:F }}>Analyse en cours…</div>
-            <div style={{ fontSize:12.5, color:'#94A3B8', fontFamily:F }}>Aria identifie les produits</div>
+        <div style={S.analyzingOverlay}>
+          <div style={S.analyzingBox}>
+            <div style={S.analyzingIcon}>📸</div>
+            <div style={S.analyzingTitle}>Analyse en cours…</div>
+            <div style={S.analyzingSub}>Aria identifie les produits</div>
           </div>
         </div>
       )}
@@ -695,10 +705,10 @@ export default function Stock({ stock = [], setStock, fournisseurs = [], user, p
       {photoError && (
         <div style={S.backdrop} onClick={() => setPhotoError(null)}>
           <div style={{ ...S.modal, maxWidth:340 }} onClick={e => e.stopPropagation()}>
-            <div style={{ padding:'28px 24px', textAlign:'center' }}>
-              <div style={{ fontSize:36, marginBottom:12 }}>⚠️</div>
-              <div style={{ fontSize:15, fontWeight:600, color:'#0F172A', marginBottom:6 }}>Analyse impossible</div>
-              <div style={{ fontSize:13, color:'#64748B', marginBottom:20 }}>{photoError}</div>
+            <div style={S.confirmBody}>
+              <div style={S.confirmIcon}>⚠️</div>
+              <div style={S.confirmTitle}>Analyse impossible</div>
+              <div style={S.confirmText}>{photoError}</div>
               <button style={{ ...S.btnPrimary, width:'100%' }} onClick={() => setPhotoError(null)}>OK</button>
             </div>
           </div>
@@ -871,19 +881,6 @@ const S = {
   cardActions: { display:'flex', gap:4, flexShrink:0 },
   actionBtn:   { width:32, height:32, border:'none', background:'#F8FAFC', borderRadius:9, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', fontSize:14, fontFamily:F, transition:'background .15s' },
 
-  // Flash mode
-  flashSection:    { display:'flex', flexDirection:'column', gap:12 },
-  flashHeader:     { display:'flex', flexDirection:'column', gap:8 },
-  flashHeaderText: { fontSize:12.5, color:'#94A3B8', fontWeight:500 },
-  flashList:       { display:'flex', flexDirection:'column', gap:6 },
-  flashRow:        { display:'flex', alignItems:'center', gap:12, background:'#fff', border:'1px solid #E2E8F0', borderRadius:12, padding:'10px 14px' },
-  flashInfo:       { flex:1, minWidth:0, display:'flex', flexDirection:'column', gap:2 },
-  flashNom:        { fontSize:13.5, fontWeight:600, color:'#0F172A', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' },
-  flashMeta:       { fontSize:11.5, color:'#94A3B8' },
-  flashQtyWrap:    { display:'flex', alignItems:'center', gap:6, flexShrink:0 },
-  flashQtyInput:   { width:64, padding:'7px 10px', border:'1.5px solid #E2E8F0', borderRadius:9, fontSize:14, fontWeight:700, fontFamily:FM, textAlign:'center', background:'#F8FAFC', outline:'none', boxSizing:'border-box' },
-  flashU:          { fontSize:11, color:'#94A3B8', fontWeight:500 },
-
   // Sortie sheet / modals
   motifGrid: { display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginTop:6 },
   motifBtn:  { display:'flex', flexDirection:'column', alignItems:'center', gap:4, padding:'12px 8px', border:'2px solid #E2E8F0', borderRadius:12, background:'#F8FAFC', cursor:'pointer', fontFamily:F, transition:'border-color .15s, background .15s', color:'#475569' },
@@ -907,6 +904,18 @@ const S = {
   btnPrimary:   { padding:'10px 22px', background:'#2563EB', color:'#fff', border:'none', borderRadius:10, fontSize:13.5, fontWeight:600, cursor:'pointer', fontFamily:F },
   btnSecondary: { padding:'10px 18px', background:'#F8FAFC', color:'#475569', border:'1.5px solid #E2E8F0', borderRadius:10, fontSize:13.5, fontWeight:500, cursor:'pointer', fontFamily:F },
   btnDanger:    { padding:'10px 18px', background:'#EF4444', color:'#fff', border:'none', borderRadius:10, fontSize:13.5, fontWeight:600, cursor:'pointer', fontFamily:F },
+
+  confirmBody:  { padding:'28px 24px', textAlign:'center' },
+  confirmIcon:  { fontSize:36, marginBottom:12 },
+  confirmTitle: { fontSize:15, fontWeight:600, color:'#0F172A', marginBottom:6 },
+  confirmText:  { fontSize:13, color:'#64748B', marginBottom:20 },
+  confirmBtns:  { display:'flex', gap:10 },
+
+  analyzingOverlay: { position:'fixed', inset:0, background:'rgba(15,23,42,.45)', backdropFilter:'blur(3px)', zIndex:300, display:'flex', alignItems:'center', justifyContent:'center', fontFamily:F },
+  analyzingBox:     { background:'#fff', borderRadius:20, padding:'32px 40px', textAlign:'center', display:'flex', flexDirection:'column', alignItems:'center', gap:14, boxShadow:'0 8px 40px rgba(0,0,0,.15)' },
+  analyzingIcon:    { fontSize:40 },
+  analyzingTitle:   { fontSize:15, fontWeight:700, color:'#0F172A', fontFamily:F },
+  analyzingSub:     { fontSize:12.5, color:'#94A3B8', fontFamily:F },
   btnSel:       { padding:'9px 16px', background:'#F1F5F9', color:'#0F172A', border:'none', borderRadius:12, fontSize:13.5, fontWeight:600, cursor:'pointer', fontFamily:F, flexShrink:0 },
   selBar:       { position:'fixed', bottom:64, left:0, right:0, zIndex:200, background:'#fff', borderTop:'1.5px solid #E2E8F0', padding:'12px 20px', display:'flex', alignItems:'center', justifyContent:'space-between', boxShadow:'0 -4px 16px rgba(0,0,0,.08)', fontFamily:F },
   addOptionBtn: { display:'flex', alignItems:'center', gap:14, padding:'14px 16px', border:'1.5px solid #E2E8F0', borderRadius:14, background:'#F8FAFC', cursor:'pointer', fontFamily:F, width:'100%', transition:'border-color .15s, background .15s' },

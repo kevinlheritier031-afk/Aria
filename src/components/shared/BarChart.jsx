@@ -30,7 +30,7 @@ function Bar({ item, pct, unit, showValue, height, animate, delay }) {
   return (
     <div style={S.row}>
       {/* Label */}
-      <div style={{ ...S.labelCol }}>
+      <div style={S.labelCol}>
         {item.icon && <span style={S.icon}>{item.icon}</span>}
         <span style={S.labelText}>{item.label}</span>
       </div>

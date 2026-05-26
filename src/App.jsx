@@ -233,11 +233,7 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    // DEBUG — à retirer après diagnostic
-    console.log('[Aria] hash au chargement :', window.location.hash)
-
     getSession().then(async session => {
-      console.log('[Aria] getSession :', session, '| user_metadata :', session?.user?.user_metadata)
       if (session?.user) {
         setUser(session.user)
         loadData(session.user.id)
@@ -260,7 +256,6 @@ export default function App() {
     // le hash #access_token présent dans les URLs d'invitation.
     // onAuthStateChange reçoit l'événement 'SIGNED_IN' quand c'est le cas.
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      console.log('[Aria] onAuthStateChange :', _event, '| session :', session, '| metadata :', session?.user?.user_metadata)
       if (session?.user) {
         setUser(session.user)
         loadData(session.user.id)
